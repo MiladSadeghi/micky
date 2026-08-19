@@ -1,11 +1,22 @@
 {
-  "files": [],
   "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "ES2022.Intl", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/renderer/src/*"],
-      "@renderer/*": ["src/renderer/src/*"]
+      "@/*": ["./src/*"]
     }
   },
-  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
+  "include": ["src", "electron", "scripts", "vite.config.ts"]
 }

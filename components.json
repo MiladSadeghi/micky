@@ -6,7 +6,7 @@
   "rtl": true,
   "tailwind": {
     "config": "",
-    "css": "src/renderer/src/index.css",
+    "css": "src/index.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""

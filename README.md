@@ -9,10 +9,15 @@ pnpm install
 pnpm dev
 ```
 
+## بررسی
+
+```bash
+pnpm typecheck
+pnpm test
+```
+
 ## بیلد
 
 ```bash
-pnpm build:mac
-pnpm build:win
-pnpm build:linux
+pnpm dist
 ```

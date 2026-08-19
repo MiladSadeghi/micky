@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import { readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 
