@@ -1,20 +1,24 @@
 import { resolve } from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'electron-vite'
+import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 export default defineConfig({
   main: {
+    plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
         input: {
           index: resolve('src/main/index.ts'),
-          'wake-word-worker': resolve('src/main/wake-word/worker.ts')
+          'wake-word-worker': resolve('src/main/wake-word/worker.ts'),
+          'asr-process': resolve('src/main/speech/asr-process.ts')
         }
       }
     }
   },
-  preload: {},
+  preload: {
+    plugins: [externalizeDepsPlugin()]
+  },
   renderer: {
     resolve: {
       alias: {
