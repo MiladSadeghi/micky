@@ -20,6 +20,7 @@ type SpeechServiceOptions = {
   getWindow: () => BrowserWindow | null
   getPreroll: () => ArrayBuffer
   onSessionEnd: () => void
+  onPartialTranscript?: (text: string) => void
   onFinalTranscript?: (text: string) => void
 }
 
@@ -64,7 +65,7 @@ export class SpeechService {
     await this.#ensureLoaded(modelId)
   }
 
-  async startSession(): Promise<void> {
+  async startSession(options?: { preroll?: boolean }): Promise<void> {
     const modelId = this.options.settings.get().activeModelId
     if (!this.options.models.isInstalled(modelId)) {
       this.#update({
@@ -84,7 +85,7 @@ export class SpeechService {
     this.#finalizing = false
     this.#sessionId += 1
     const sessionId = String(this.#sessionId)
-    const preroll = this.options.getPreroll()
+    const preroll = options?.preroll === false ? new ArrayBuffer(0) : this.options.getPreroll()
     this.#update({
       phase: 'loading',
       modelId,
@@ -182,16 +183,19 @@ export class SpeechService {
       isFinal: false,
       updatedAt: Date.now()
     })
+    this.options.onPartialTranscript?.(text)
   }
 
   #onEndpoint(text: string): void {
     if (!this.#active || this.#finalizing) return
+    if (!text.trim()) return
     this.#emitTranscript({
       sessionId: String(this.#sessionId),
       text,
       isFinal: false,
       updatedAt: Date.now()
     })
+    this.options.onPartialTranscript?.(text)
     this.finishSession()
   }
 

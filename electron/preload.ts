@@ -14,6 +14,7 @@ import {
   type SpeechStatus,
   type SpeechTranscript
 } from '@/lib/asr'
+import { CONVERSATION_STATUS_CHANNEL, type ConversationStatus } from '@/lib/conversation'
 import type { MickyAPI } from '@/lib/desktop-api'
 import { LLM_SNAPSHOT_CHANNEL, type LlmSnapshot } from '@/lib/llm'
 import {
@@ -52,6 +53,11 @@ const api: MickyAPI = {
       subscribe(SPEECH_STATUS_CHANNEL, listener),
     onTranscript: (listener: (transcript: SpeechTranscript) => void): (() => void) =>
       subscribe(SPEECH_TRANSCRIPT_CHANNEL, listener)
+  },
+  conversation: {
+    getStatus: (): Promise<ConversationStatus> => ipcRenderer.invoke('conversation:get-status'),
+    onStatusChange: (listener: (status: ConversationStatus) => void): (() => void) =>
+      subscribe(CONVERSATION_STATUS_CHANNEL, listener)
   },
   models: {
     getStatus: (): Promise<ModelsSnapshot> => ipcRenderer.invoke('models:get-status'),

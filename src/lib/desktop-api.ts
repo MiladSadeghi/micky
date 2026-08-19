@@ -1,4 +1,5 @@
 import type { AgentDelta, AgentStatus } from '@/lib/agent'
+import type { ConversationStatus } from '@/lib/conversation'
 import type { ModelsSnapshot, SpeechStatus, SpeechTranscript } from '@/lib/asr'
 import type { LlmSnapshot } from '@/lib/llm'
 import type { SoulFileId, SoulSnapshot, UserProfileDraft } from '@/lib/soul'
@@ -20,6 +21,10 @@ export type MickyAPI = {
     getStatus: () => Promise<SpeechStatus>
     onStatusChange: (listener: (status: SpeechStatus) => void) => () => void
     onTranscript: (listener: (transcript: SpeechTranscript) => void) => () => void
+  }
+  conversation: {
+    getStatus: () => Promise<ConversationStatus>
+    onStatusChange: (listener: (status: ConversationStatus) => void) => () => void
   }
   models: {
     getStatus: () => Promise<ModelsSnapshot>

@@ -318,6 +318,44 @@
   color: color-mix(in srgb, var(--foreground) 88%, var(--grey-400));
 }
 
+.agent-reply[data-followup='true'] {
+  opacity: 0.58;
+}
+
+.followup-hint {
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: var(--muted-foreground);
+}
+
+.orb-followup-timer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: visible;
+  pointer-events: none;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.orb-followup-timer circle {
+  fill: none;
+  stroke: color-mix(in srgb, var(--foreground) 46%, transparent);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  animation: followup-drain var(--followup-ms) linear forwards;
+}
+
+@keyframes followup-drain {
+  to {
+    stroke-dashoffset: 100;
+    opacity: 0.2;
+  }
+}
+
 @keyframes transcript-reveal {
   from {
     opacity: 0;
@@ -334,7 +372,8 @@
 @media (prefers-reduced-motion: reduce) {
   .orb-trigger::before,
   .orb-trigger::after,
-  .transcript-word-enter {
+  .transcript-word-enter,
+  .orb-followup-timer circle {
     animation: none !important;
   }
 }

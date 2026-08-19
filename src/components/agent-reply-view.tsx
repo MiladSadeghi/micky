@@ -4,6 +4,7 @@ type AgentReplyViewProps = {
   turnId: string
   text: string
   phase: string
+  awaitingFollowup?: boolean
 }
 
 function splitWords(text: string): string[] {
@@ -23,7 +24,12 @@ function ReplyWord({ word, delayIndex }: { word: string; delayIndex: number }): 
   )
 }
 
-export function AgentReplyView({ turnId, text, phase }: AgentReplyViewProps): React.JSX.Element {
+export function AgentReplyView({
+  turnId,
+  text,
+  phase,
+  awaitingFollowup = false
+}: AgentReplyViewProps): React.JSX.Element {
   const words = splitWords(text)
   const [meta, setMeta] = useState({ turnId, count: 0 })
 
@@ -49,6 +55,7 @@ export function AgentReplyView({ turnId, text, phase }: AgentReplyViewProps): Re
     <p
       className="transcript agent-reply"
       data-final={phase === 'idle' || phase === 'error' ? 'true' : 'false'}
+      data-followup={awaitingFollowup ? 'true' : 'false'}
     >
       {words.map((word, index) => (
         <ReplyWord

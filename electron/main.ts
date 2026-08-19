@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { INITIAL_AGENT_STATUS } from '@/lib/agent'
+import { INITIAL_CONVERSATION_STATUS } from '@/lib/conversation'
 import { AUDIO_CHUNK_CHANNEL } from '@/lib/asr'
 import { OPENROUTER_KEYS_URL } from '@/lib/llm'
 import {
@@ -156,6 +157,10 @@ function registerIpc(): void {
     await shell.openExternal(url)
   })
 
+  ipcMain.handle('conversation:get-status', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted conversation status request.')
+    return conversation?.getStatus() ?? INITIAL_CONVERSATION_STATUS
+  })
   ipcMain.handle('agent:get-status', (event) => {
     if (!isTrustedSender(event.sender)) throw new Error('Untrusted agent status request.')
     return agentService?.getStatus() ?? INITIAL_AGENT_STATUS
@@ -358,6 +363,7 @@ function startRuntime(): void {
     getWindow: () => mainWindow,
     getPreroll: () => audioRouter?.takePreroll() ?? new ArrayBuffer(0),
     onSessionEnd: () => conversation?.onSpeechSessionEnd(),
+    onPartialTranscript: (text) => conversation?.onPartialTranscript(text),
     onFinalTranscript: (text) => conversation?.onFinalTranscript(text)
   })
   wakeWordService = new WakeWordService({
@@ -411,7 +417,8 @@ app.whenReady().then(async () => {
     llm: llmService,
     getAgent: () => agentService,
     getSpeech: () => speechService,
-    getWakeWord: () => wakeWordService
+    getWakeWord: () => wakeWordService,
+    getWindow: () => mainWindow
   })
   modelRegistry = new ModelRegistry({
     modelsRoot: join(app.getPath('userData'), 'models'),

@@ -71,9 +71,15 @@ function handleAudio(samples: ArrayBuffer): void {
     post({ type: 'partial', text })
   }
   if (recognizer.isEndpoint(stream)) {
+    const text = currentText()
+    if (!text) {
+      recognizer.reset(stream)
+      lastText = ''
+      return
+    }
     ended = true
-    lastText = currentText()
-    post({ type: 'endpoint', text: lastText })
+    lastText = text
+    post({ type: 'endpoint', text })
   }
 }
 

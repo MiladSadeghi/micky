@@ -1,4 +1,5 @@
 let playbackContext: AudioContext | null = null
+let lastTurnDoneAt = 0
 
 function getPlaybackContext(): AudioContext {
   if (!playbackContext || playbackContext.state === 'closed') {
@@ -47,22 +48,49 @@ function playTone(
   harmonic.stop(start + duration + 0.02)
 }
 
+function playWhenReady(play: (context: AudioContext) => void): void {
+  const context = getPlaybackContext()
+  if (context.state === 'running') {
+    play(context)
+    return
+  }
+  void context.resume().then(() => play(context))
+}
+
 export function primeWakeChime(): void {
   void getPlaybackContext().resume()
 }
 
 export function playWakeChime(): void {
-  const context = getPlaybackContext()
-  const play = (): void => {
+  playWhenReady((context) => {
     const now = context.currentTime
     playTone(context, 587.33, now, 0.1, 0.055)
     playTone(context, 880, now + 0.075, 0.18, 0.07)
+  })
+}
+
+export function playTurnDoneChime(): void {
+  lastTurnDoneAt = performance.now()
+  playWhenReady((context) => {
+    const now = context.currentTime
+    playTone(context, 783.99, now, 0.12, 0.05)
+    playTone(context, 523.25, now + 0.11, 0.2, 0.062)
+  })
+}
+
+export function playListenChime(): void {
+  const waitMs = Math.max(0, 240 - (performance.now() - lastTurnDoneAt))
+  const trigger = (): void => {
+    playWhenReady((context) => {
+      const now = context.currentTime
+      playTone(context, 523.25, now, 0.08, 0.04)
+      playTone(context, 698.46, now + 0.07, 0.16, 0.058)
+    })
   }
 
-  if (context.state === 'running') {
-    play()
+  if (waitMs === 0) {
+    trigger()
     return
   }
-
-  void context.resume().then(play)
+  window.setTimeout(trigger, waitMs)
 }

@@ -1,7 +1,6 @@
 export const AGENT_STATUS_CHANNEL = 'agent:status'
 export const AGENT_DELTA_CHANNEL = 'agent:delta'
 
-export const FOLLOWUP_WINDOW_MS = 6_000
 export const AGENT_MAX_STEPS = 8
 export const AGENT_HISTORY_LIMIT = 20
 

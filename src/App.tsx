@@ -7,9 +7,11 @@ import { OnboardingView } from '@/components/onboarding-view'
 import { SettingsView } from '@/components/settings-view'
 import { TranscriptView } from '@/components/transcript-view'
 import { useAgent } from '@/hooks/use-agent'
+import { useConversation } from '@/hooks/use-conversation'
 import { useModels } from '@/hooks/use-models'
 import { useSoul } from '@/hooks/use-soul'
 import { useSpeech } from '@/hooks/use-speech'
+import { useTurnCues } from '@/hooks/use-turn-cues'
 import { useWakeWord } from '@/hooks/use-wake-word'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +20,7 @@ const PHASE_LABEL = {
   loading: 'یک لحظه…',
   listening: 'بگو «هی میکی»',
   activated: 'گوش می‌دم…',
+  followup: 'ادامه بده…',
   error: 'میکروفن در دسترس نیست'
 } as const
 
@@ -26,7 +29,22 @@ const ORB_STATE: Record<keyof typeof PHASE_LABEL, OrbState> = {
   loading: 'connecting',
   listening: 'breathing',
   activated: 'listening',
+  followup: 'listening',
   error: 'shaping'
+}
+
+function FollowupTimer({ until }: { until: number }): React.JSX.Element {
+  const [durationMs] = useState(() => Math.max(320, until - Date.now()))
+  return (
+    <svg
+      className="orb-followup-timer"
+      viewBox="0 0 100 100"
+      aria-hidden="true"
+      style={{ '--followup-ms': `${durationMs}ms` } as React.CSSProperties}
+    >
+      <circle cx="50" cy="50" r="48.2" pathLength="100" />
+    </svg>
+  )
 }
 
 function App(): React.JSX.Element {
@@ -36,9 +54,13 @@ function App(): React.JSX.Element {
   const models = useModels()
   const soul = useSoul()
   const agent = useAgent()
+  const conversation = useConversation()
+  useTurnCues(conversation)
   const phase = status?.phase ?? 'loading'
   const enabled = status?.enabled ?? true
   const isActivated = phase === 'activated'
+  const isFollowup = conversation?.mode === 'followup'
+  const followupOpen = isFollowup && !conversation?.followupHeard
   const isLoading = phase === 'loading'
   const hasInstalledModel = models?.models.some((model) => model.state === 'installed') ?? false
   const transcript = speech?.transcript
@@ -50,6 +72,7 @@ function App(): React.JSX.Element {
     (agentBusy || agent?.phase === 'error' || Boolean(agentTurn?.replyText)) &&
     !(isActivated && transcript?.text && !transcript.isFinal)
   const showTranscript = isActivated && Boolean(transcript?.text) && !showAgent
+  const showFollowupPrompt = followupOpen && !showTranscript && !agentBusy
   const sessionActive = speech?.phase === 'listening' || speech?.phase === 'loading'
   const error =
     (showAgent ? agent?.error : null) ??
@@ -101,30 +124,35 @@ function App(): React.JSX.Element {
         <button
           type="button"
           className="orb-trigger"
-          data-phase={agentBusy ? 'thinking' : isActivated ? 'activated' : phase}
+          data-phase={agentBusy ? 'thinking' : isActivated || isFollowup ? 'activated' : phase}
           onClick={handleOrbClick}
           disabled={isLoading}
           aria-label={
             agentBusy
               ? 'قطع پاسخ'
-              : isActivated
-                ? 'پایان شنیدن و بازگشت به حالت آماده'
-                : 'شروع شنیدن'
+              : isFollowup
+                ? 'پایان گفتگو و بازگشت به حالت آماده'
+                : isActivated
+                  ? 'پایان شنیدن و بازگشت به حالت آماده'
+                  : 'شروع شنیدن'
           }
-          aria-pressed={isActivated || agentBusy}
+          aria-pressed={isActivated || agentBusy || isFollowup}
         >
           <span className="orb-aura" aria-hidden="true" />
+          {followupOpen && conversation?.followupUntil ? (
+            <FollowupTimer key={conversation.followupUntil} until={conversation.followupUntil} />
+          ) : null}
           <span className="orb-core">
             <ThinkingOrb
               state={orbState}
               size={64}
               theme="dark"
-              speed={isActivated || agentBusy ? 1.25 : 0.82}
+              speed={isActivated || agentBusy || isFollowup ? 1.25 : 0.82}
               paused={phase === 'disabled' || (phase === 'error' && !agentBusy)}
               aria-label={
                 agentBusy
                   ? 'میکی در حال جواب‌دادن است'
-                  : isActivated
+                  : isFollowup || isActivated
                     ? 'میکی در حال گوش‌دادن است'
                     : 'میکی آماده شنیدن است'
               }
@@ -138,6 +166,7 @@ function App(): React.JSX.Element {
               turnId={agentTurn.turnId}
               text={agentTurn.error ?? agentTurn.replyText}
               phase={agentTurn.phase}
+              awaitingFollowup={showFollowupPrompt}
             />
           ) : showTranscript && transcript ? (
             <TranscriptView
@@ -152,9 +181,12 @@ function App(): React.JSX.Element {
                 error && 'text-sm font-normal leading-6 text-muted-foreground'
               )}
             >
-              {error ?? PHASE_LABEL[phase]}
+              {error ?? (showFollowupPrompt ? PHASE_LABEL.followup : PHASE_LABEL[phase])}
             </p>
           )}
+          {showFollowupPrompt && showAgent ? (
+            <p className="followup-hint">{PHASE_LABEL.followup}</p>
+          ) : null}
           {!hasInstalledModel && !error ? (
             <Button
               variant="ghost"
