@@ -1,0 +1,96 @@
+export const ASR_SAMPLE_RATE = 16_000
+export const ASR_FEATURE_DIM = 80
+export const ASR_PREROLL_MS = 250
+export const ASR_PREROLL_SAMPLES = Math.round(ASR_SAMPLE_RATE * (ASR_PREROLL_MS / 1_000))
+export const ASR_MAX_UTTERANCE_MS = 20_000
+export const ASR_FINAL_HOLD_MS = 900
+export const ASR_PROGRESS_BROADCAST_INTERVAL_MS = 240
+export const ASR_NUM_THREADS = 2
+
+export const AUDIO_CHUNK_CHANNEL = 'audio:chunk'
+export const SPEECH_STATUS_CHANNEL = 'speech:status'
+export const SPEECH_TRANSCRIPT_CHANNEL = 'speech:transcript'
+export const MODELS_STATUS_CHANNEL = 'models:status'
+
+export type SpeechPhase = 'idle' | 'loading' | 'listening' | 'finalizing' | 'error'
+
+export type SpeechTranscript = {
+  sessionId: string
+  text: string
+  isFinal: boolean
+  updatedAt: number
+}
+
+export type SpeechStatus = {
+  phase: SpeechPhase
+  modelId: string | null
+  ready: boolean
+  error: string | null
+  transcript: SpeechTranscript | null
+}
+
+export const INITIAL_SPEECH_STATUS: SpeechStatus = {
+  phase: 'idle',
+  modelId: null,
+  ready: false,
+  error: null,
+  transcript: null
+}
+
+export type ModelInstallState = 'missing' | 'downloading' | 'installed' | 'error'
+
+export type AsrModelView = {
+  id: string
+  label: string
+  description: string
+  params: string
+  bytes: number
+  isDefault: boolean
+  cardUrl: string
+  state: ModelInstallState
+  bytesDownloaded: number
+  error: string | null
+}
+
+export type ModelsSnapshot = {
+  activeModelId: string | null
+  models: AsrModelView[]
+}
+
+export type EndpointSettings = {
+  rule1MinTrailingSilence: number
+  rule2MinTrailingSilence: number
+  rule3MinUtteranceLength: number
+}
+
+export const DEFAULT_ENDPOINT_SETTINGS: EndpointSettings = {
+  rule1MinTrailingSilence: 2.4,
+  rule2MinTrailingSilence: 0.8,
+  rule3MinUtteranceLength: 20
+}
+
+export type AppSettings = {
+  activeModelId: string
+  wakeWordEnabled: boolean
+  endpoint: EndpointSettings
+}
+
+export type AsrProcessRequest =
+  | {
+      type: 'initialize'
+      modelPath: string
+      tokensPath: string
+      numThreads: number
+      endpoint: EndpointSettings
+    }
+  | { type: 'start' }
+  | { type: 'audio'; samples: ArrayBuffer }
+  | { type: 'stop' }
+  | { type: 'dispose' }
+
+export type AsrProcessResponse =
+  | { type: 'ready' }
+  | { type: 'partial'; text: string }
+  | { type: 'endpoint'; text: string }
+  | { type: 'final'; text: string }
+  | { type: 'error'; error: string }
