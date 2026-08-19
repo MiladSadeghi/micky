@@ -1,37 +1,23 @@
-import { Mic, MicOff, RotateCcw } from 'lucide-react'
+import { Mic, MicOff, RotateCcw, Settings } from 'lucide-react'
+import { useState } from 'react'
 import { ThinkingOrb, type OrbState } from 'thinking-orbs'
 import { Button } from '@/components/ui/button'
+import { SettingsView } from '@/components/settings-view'
+import { TranscriptView } from '@/components/transcript-view'
+import { useModels } from '@/hooks/use-models'
+import { useSpeech } from '@/hooks/use-speech'
 import { useWakeWord } from '@/hooks/use-wake-word'
+import { cn } from '@/lib/utils'
 
-const PHASE_CONTENT = {
-  disabled: {
-    eyebrow: 'میکروفن خاموش است',
-    title: 'هر وقت خواستی، شروع کنیم',
-    hint: 'برای فعال‌کردن شنیدن روی گوی بزن.'
-  },
-  loading: {
-    eyebrow: 'در حال آماده‌شدن',
-    title: 'یک لحظه…',
-    hint: 'مدل بیدارباش روی دستگاهت بارگذاری می‌شود.'
-  },
-  listening: {
-    eyebrow: 'میکی گوش‌به‌زنگ است',
-    title: 'بگو «هی نیمروز»',
-    hint: 'یا برای شروع مستقیم روی گوی بزن.'
-  },
-  activated: {
-    eyebrow: 'صدات رو شنیدم',
-    title: 'گوش می‌دم…',
-    hint: 'حالا بگو چه کاری برات انجام بدم.'
-  },
-  error: {
-    eyebrow: 'میکروفن آماده نیست',
-    title: 'نتونستم گوش بدم',
-    hint: 'دسترسی میکروفن را بررسی کن و دوباره تلاش کن.'
-  }
+const PHASE_LABEL = {
+  disabled: 'شنیدن خاموش است',
+  loading: 'یک لحظه…',
+  listening: 'بگو «هی نیمروز»',
+  activated: 'گوش می‌دم…',
+  error: 'میکروفن در دسترس نیست'
 } as const
 
-const ORB_STATE: Record<keyof typeof PHASE_CONTENT, OrbState> = {
+const ORB_STATE: Record<keyof typeof PHASE_LABEL, OrbState> = {
   disabled: 'breathing',
   loading: 'connecting',
   listening: 'breathing',
@@ -40,12 +26,26 @@ const ORB_STATE: Record<keyof typeof PHASE_CONTENT, OrbState> = {
 }
 
 function App(): React.JSX.Element {
+  const [screen, setScreen] = useState<'home' | 'settings'>('home')
   const status = useWakeWord()
+  const speech = useSpeech()
+  const models = useModels()
   const phase = status?.phase ?? 'loading'
-  const content = PHASE_CONTENT[phase]
   const enabled = status?.enabled ?? true
   const isActivated = phase === 'activated'
   const isLoading = phase === 'loading'
+  const hasInstalledModel = models?.models.some((model) => model.state === 'installed') ?? false
+  const transcript = speech?.transcript
+  const showTranscript = isActivated && Boolean(transcript?.text)
+  const sessionActive = speech?.phase === 'listening' || speech?.phase === 'loading'
+  const error = (isActivated ? speech?.error : null) ?? status?.error ?? null
+
+  const orbState: OrbState =
+    speech?.phase === 'finalizing' || (isActivated && transcript?.isFinal)
+      ? 'shaping'
+      : speech?.phase === 'listening' || isActivated
+        ? 'listening'
+        : ORB_STATE[phase]
 
   const handleOrbClick = (): void => {
     if (isLoading) return
@@ -56,15 +56,25 @@ function App(): React.JSX.Element {
     void window.api.wakeWord.activateManually()
   }
 
+  if (screen === 'settings') {
+    return (
+      <SettingsView
+        snapshot={models}
+        sessionActive={sessionActive}
+        onBack={() => setScreen('home')}
+      />
+    )
+  }
+
   return (
     <main className="voice-shell flex min-h-full flex-col overflow-hidden text-center">
       <header className="app-titlebar" aria-hidden="true" />
 
-      <section className="flex flex-1 flex-col items-center justify-center px-6 pb-8">
+      <section className="flex flex-1 flex-col items-center justify-center gap-9 px-6">
         <button
           type="button"
           className="orb-trigger"
-          data-phase={phase}
+          data-phase={isActivated ? 'activated' : phase}
           onClick={handleOrbClick}
           disabled={isLoading}
           aria-label={isActivated ? 'پایان شنیدن و بازگشت به حالت آماده' : 'شروع شنیدن'}
@@ -73,7 +83,7 @@ function App(): React.JSX.Element {
           <span className="orb-aura" aria-hidden="true" />
           <span className="orb-core">
             <ThinkingOrb
-              state={ORB_STATE[phase]}
+              state={orbState}
               size={64}
               theme="dark"
               speed={isActivated ? 1.25 : 0.82}
@@ -83,37 +93,68 @@ function App(): React.JSX.Element {
           </span>
         </button>
 
-        <div
-          className="mt-11 flex min-h-28 max-w-xs flex-col items-center gap-2"
-          aria-live="polite"
-        >
-          <p className="text-xs font-medium text-muted-foreground">{content.eyebrow}</p>
-          <h2 className="text-[1.7rem] font-semibold tracking-[-0.045em]">{content.title}</h2>
-          <p className="max-w-64 text-xs leading-6 text-muted-foreground">
-            {status?.error ?? content.hint}
-          </p>
+        <div className="flex min-h-16 max-w-72 flex-col items-center gap-3" aria-live="polite">
+          {showTranscript && transcript ? (
+            <TranscriptView
+              sessionId={transcript.sessionId}
+              text={transcript.text}
+              isFinal={transcript.isFinal}
+            />
+          ) : (
+            <p
+              className={cn(
+                'text-[1.15rem] font-medium tracking-[-0.035em]',
+                error && 'text-sm font-normal leading-6 text-muted-foreground'
+              )}
+            >
+              {error ?? PHASE_LABEL[phase]}
+            </p>
+          )}
+          {!hasInstalledModel && !error ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-muted-foreground"
+              onClick={() => setScreen('settings')}
+            >
+              دانلود مدل شنوا
+            </Button>
+          ) : null}
         </div>
       </section>
 
-      <footer className="flex flex-col items-center gap-3 px-6 pb-5">
+      <footer className="flex items-center justify-center gap-1 pb-5">
         {phase === 'error' ? (
-          <Button variant="outline" size="sm" onClick={() => void window.api.wakeWord.retry()}>
-            <RotateCcw data-icon="inline-start" />
-            تلاش دوباره
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            onClick={() => void window.api.wakeWord.retry()}
+            aria-label="تلاش دوباره"
+          >
+            <RotateCcw />
           </Button>
         ) : (
           <Button
             variant="ghost"
-            size="sm"
+            size="icon-sm"
+            className="text-muted-foreground"
             onClick={() => void window.api.wakeWord.setEnabled(!enabled)}
+            aria-label={enabled ? 'خاموش‌کردن شنیدن' : 'روشن‌کردن شنیدن'}
+            aria-pressed={enabled}
           >
-            {enabled ? <Mic data-icon="inline-start" /> : <MicOff data-icon="inline-start" />}
-            {enabled ? 'شنیدن عبارت بیدارباش روشن است' : 'شنیدن خاموش است'}
+            {enabled ? <Mic /> : <MicOff />}
           </Button>
         )}
-        <p className="text-[0.62rem] leading-5 text-muted-foreground/70">
-          پردازش صدا روی همین دستگاه انجام می‌شود
-        </p>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground"
+          onClick={() => setScreen('settings')}
+          aria-label="تنظیمات"
+        >
+          <Settings />
+        </Button>
       </footer>
     </main>
   )
