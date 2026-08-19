@@ -24,7 +24,7 @@ export type LlmSnapshot = {
   customModelIds: string[]
   catalog: LlmModelInfo[]
   hasApiKey: boolean
-  encryptionAvailable: boolean
+  keychainAvailable: boolean
   configured: boolean
   error: string | null
 }

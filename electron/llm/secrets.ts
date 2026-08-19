@@ -1,8 +1,21 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
-import { safeStorage } from 'electron'
+import { readFile, rm } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
 
-const SECRETS_FILE_NAME = 'secrets.json'
+const require = createRequire(import.meta.url)
+
+const LEGACY_SECRETS_FILE_NAME = 'secrets.json'
+const KEYCHAIN_SERVICE = 'dev.micky.app'
+const KEYCHAIN_ACCOUNT = 'openrouter'
+
+export const KEYCHAIN_UNAVAILABLE_ERROR =
+  'کی‌چین سیستم در دسترس نیست. روی لینوکس GNOME Keyring یا KWallet لازم است.'
+
+export type KeychainBackend = {
+  getPassword: (service: string, account: string) => string | null
+  setPassword: (service: string, account: string, password: string) => void
+  deletePassword: (service: string, account: string) => boolean
+}
 
 type SecretRecord = {
   v: 1
@@ -14,17 +27,23 @@ type SecretsFile = {
   openrouterApiKey?: SecretRecord
 }
 
-export class SecretStore {
-  #path: string
-  #apiKey: string | null = null
-  #encryptionAvailable = false
+type SecretStoreOptions = {
+  backend?: KeychainBackend
+}
 
-  constructor(userDataPath: string) {
-    this.#path = join(userDataPath, SECRETS_FILE_NAME)
+export class SecretStore {
+  #legacyPath: string
+  #backend: KeychainBackend | null
+  #apiKey: string | null = null
+  #keychainAvailable = false
+
+  constructor(userDataPath: string, options: SecretStoreOptions = {}) {
+    this.#legacyPath = join(userDataPath, LEGACY_SECRETS_FILE_NAME)
+    this.#backend = options.backend ?? createOsKeychain()
   }
 
-  get encryptionAvailable(): boolean {
-    return this.#encryptionAvailable
+  get keychainAvailable(): boolean {
+    return this.#keychainAvailable
   }
 
   getApiKey(): string | null {
@@ -36,14 +55,22 @@ export class SecretStore {
   }
 
   async load(): Promise<void> {
-    this.#encryptionAvailable = safeStorage.isEncryptionAvailable()
-    try {
-      const raw = await readFile(this.#path, 'utf8')
-      const parsed = JSON.parse(raw) as SecretsFile
-      this.#apiKey = decodeSecret(parsed.openrouterApiKey, this.#encryptionAvailable)
-    } catch {
-      this.#apiKey = null
+    this.#keychainAvailable = probeKeychain(this.#backend)
+    this.#apiKey = this.#keychainAvailable ? this.#readKeychain() : null
+
+    if (this.#apiKey) {
+      await this.#deleteLegacyFile()
+      return
     }
+
+    const legacy = await this.#readLegacyFile()
+    if (!legacy) return
+
+    this.#apiKey = legacy
+    if (!this.#keychainAvailable || !this.#backend) return
+
+    this.#backend.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, legacy)
+    await this.#deleteLegacyFile()
   }
 
   async setApiKey(value: string): Promise<void> {
@@ -52,48 +79,91 @@ export class SecretStore {
       await this.clearApiKey()
       return
     }
-    this.#encryptionAvailable = safeStorage.isEncryptionAvailable()
+    if (!this.#backend || !this.#keychainAvailable) {
+      throw new Error(KEYCHAIN_UNAVAILABLE_ERROR)
+    }
+    this.#backend.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, trimmed)
     this.#apiKey = trimmed
-    await this.#persist()
+    await this.#deleteLegacyFile()
   }
 
   async clearApiKey(): Promise<void> {
     this.#apiKey = null
-    await this.#persist()
+    if (this.#backend && this.#keychainAvailable) {
+      this.#backend.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+    }
+    await this.#deleteLegacyFile()
   }
 
-  async #persist(): Promise<void> {
-    await mkdir(dirname(this.#path), { recursive: true })
-    const file: SecretsFile = {}
-    if (this.#apiKey) {
-      file.openrouterApiKey = encodeSecret(this.#apiKey, this.#encryptionAvailable)
+  #readKeychain(): string | null {
+    if (!this.#backend) return null
+    try {
+      const value = this.#backend.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+      return value?.trim() ? value : null
+    } catch {
+      return null
     }
-    const tempPath = `${this.#path}.tmp`
-    await writeFile(tempPath, `${JSON.stringify(file, null, 2)}\n`, 'utf8')
-    await rename(tempPath, this.#path)
+  }
+
+  async #readLegacyFile(): Promise<string | null> {
+    try {
+      const raw = await readFile(this.#legacyPath, 'utf8')
+      const parsed = JSON.parse(raw) as SecretsFile
+      return decodeLegacySecret(parsed.openrouterApiKey)
+    } catch {
+      return null
+    }
+  }
+
+  async #deleteLegacyFile(): Promise<void> {
+    await rm(this.#legacyPath, { force: true })
   }
 }
 
-function encodeSecret(value: string, encrypt: boolean): SecretRecord {
-  if (encrypt) {
+function createOsKeychain(): KeychainBackend | null {
+  try {
+    const { Entry } = require('@napi-rs/keyring') as typeof import('@napi-rs/keyring')
     return {
-      v: 1,
-      encrypted: true,
-      payload: safeStorage.encryptString(value).toString('base64')
+      getPassword(service, account) {
+        return new Entry(service, account).getPassword()
+      },
+      setPassword(service, account, password) {
+        new Entry(service, account).setPassword(password)
+      },
+      deletePassword(service, account) {
+        try {
+          return new Entry(service, account).deletePassword()
+        } catch {
+          return false
+        }
+      }
     }
+  } catch {
+    return null
   }
-  return { v: 1, encrypted: false, payload: value }
 }
 
-function decodeSecret(
-  record: SecretRecord | undefined,
-  encryptionAvailable: boolean
-): string | null {
+function probeKeychain(backend: KeychainBackend | null): boolean {
+  if (!backend) return false
+  try {
+    backend.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function decodeLegacySecret(record: SecretRecord | undefined): string | null {
   if (!record || typeof record.payload !== 'string' || !record.payload) return null
   if (!record.encrypted) return record.payload
-  if (!encryptionAvailable) return null
+  return decryptLegacyPayload(record.payload)
+}
+
+function decryptLegacyPayload(payload: string): string | null {
   try {
-    return safeStorage.decryptString(Buffer.from(record.payload, 'base64'))
+    const { safeStorage } = require('electron') as typeof import('electron')
+    if (!safeStorage.isEncryptionAvailable()) return null
+    return safeStorage.decryptString(Buffer.from(payload, 'base64'))
   } catch {
     return null
   }

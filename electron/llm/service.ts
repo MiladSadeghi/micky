@@ -109,7 +109,7 @@ export class LlmService {
       customModelIds: settings.llm.customModelIds,
       catalog: known,
       hasApiKey: this.options.secrets.hasApiKey(),
-      encryptionAvailable: this.options.secrets.encryptionAvailable,
+      keychainAvailable: this.options.secrets.keychainAvailable,
       configured: this.isConfigured(),
       error: this.options.secrets.hasApiKey()
         ? null

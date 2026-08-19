@@ -12,15 +12,20 @@ export function LlmSettings({ snapshot, compact = false }: LlmSettingsProps): Re
   const [apiKey, setApiKey] = useState('')
   const [customSlug, setCustomSlug] = useState('')
   const [busy, setBusy] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const keychainReady = snapshot?.keychainAvailable !== false
   const catalog = snapshot?.catalog ?? []
   const activeId = snapshot?.modelId ?? null
 
   const saveKey = async (): Promise<void> => {
     if (!apiKey.trim()) return
     setBusy(true)
+    setSaveError(null)
     try {
       await window.api.llm.setApiKey(apiKey.trim())
       setApiKey('')
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'ذخیره کلید ممکن نشد.')
     } finally {
       setBusy(false)
     }
@@ -62,7 +67,11 @@ export function LlmSettings({ snapshot, compact = false }: LlmSettingsProps): Re
             onChange={(event) => setApiKey(event.target.value)}
             className="h-8 min-w-0 flex-1 rounded-lg border border-border/70 bg-background/40 px-2.5 text-start text-xs outline-none focus-visible:border-ring"
           />
-          <Button size="sm" disabled={busy || !apiKey.trim()} onClick={() => void saveKey()}>
+          <Button
+            size="sm"
+            disabled={busy || !apiKey.trim() || !keychainReady}
+            onClick={() => void saveKey()}
+          >
             ذخیره
           </Button>
           {snapshot?.hasApiKey ? (
@@ -76,9 +85,10 @@ export function LlmSettings({ snapshot, compact = false }: LlmSettingsProps): Re
             </Button>
           ) : null}
         </div>
-        {!snapshot?.encryptionAvailable ? (
+        {saveError ? <p className="text-[0.68rem] text-destructive">{saveError}</p> : null}
+        {!keychainReady ? (
           <p className="text-[0.68rem] text-muted-foreground">
-            رمزنگاری سیستم در دسترس نیست؛ کلید به‌صورت متن ساده ذخیره می‌شود.
+            کی‌چین سیستم در دسترس نیست. روی لینوکس GNOME Keyring یا KWallet لازم است.
           </p>
         ) : null}
       </section>

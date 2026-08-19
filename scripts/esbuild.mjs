@@ -17,7 +17,7 @@ const shared = {
   sourcemap: true,
   alias,
   // Electron and native addons are provided at runtime.
-  external: ['electron', 'onnxruntime-node', 'sherpa-onnx-node'],
+  external: ['electron', 'onnxruntime-node', 'sherpa-onnx-node', '@napi-rs/keyring'],
   logLevel: 'info'
 }
 
