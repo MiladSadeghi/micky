@@ -51,4 +51,19 @@ export default async function afterPack(context) {
       }
     }
   }
+
+  const unpackedNodeModules = path.join(resourcesDirectory, 'app.asar.unpacked', 'node_modules')
+  const sherpaPlatform = platform === 'win32' ? 'win' : platform
+  try {
+    for (const entry of await readdir(unpackedNodeModules, { withFileTypes: true })) {
+      const match = /^sherpa-onnx-(darwin|linux|win)-(arm64|x64|ia32)$/.exec(entry.name)
+      if (!match) continue
+      const [, pkgPlatform, pkgArch] = match
+      if (pkgPlatform !== sherpaPlatform || (arch !== 'universal' && pkgArch !== arch)) {
+        await rm(path.join(unpackedNodeModules, entry.name), { recursive: true, force: true })
+      }
+    }
+  } catch {
+    // Native extras are only present when sherpa-onnx was unpacked into the asar.
+  }
 }

@@ -14,8 +14,16 @@ files:
 asarUnpack:
   - resources/**
   - out/main/wake-word-worker.js
+  - out/main/asr-process.js
   - node_modules/onnxruntime-common/**
   - node_modules/onnxruntime-node/**
+  - node_modules/sherpa-onnx-node/**
+  - node_modules/sherpa-onnx-darwin-arm64/**
+  - node_modules/sherpa-onnx-darwin-x64/**
+  - node_modules/sherpa-onnx-linux-x64/**
+  - node_modules/sherpa-onnx-linux-arm64/**
+  - node_modules/sherpa-onnx-win-x64/**
+  - node_modules/sherpa-onnx-win-ia32/**
 extraResources:
   - from: resources/wakeword
     to: wakeword
