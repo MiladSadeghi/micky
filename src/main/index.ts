@@ -3,13 +3,22 @@ import { existsSync } from 'node:fs'
 import { join, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { AUDIO_CHUNK_CHANNEL } from '../shared/asr'
 import { isWakeWordAudioPayload } from '../shared/wake-word'
+import { AudioRouter } from './audio-router'
+import { ModelRegistry } from './models/registry'
+import { SettingsStore } from './settings/store'
+import { SpeechService } from './speech/service'
 import { WakeWordService } from './wake-word/service'
 
 const COMPANION_WIDTH = 400
 const COMPANION_HEIGHT = 712
 let mainWindow: BrowserWindow | null = null
+let settingsStore: SettingsStore | null = null
+let modelRegistry: ModelRegistry | null = null
 let wakeWordService: WakeWordService | null = null
+let speechService: SpeechService | null = null
+let audioRouter: AudioRouter | null = null
 
 function isTrustedSender(sender: Electron.WebContents): boolean {
   return Boolean(mainWindow && !mainWindow.isDestroyed() && sender === mainWindow.webContents)
@@ -21,15 +30,16 @@ function resolveUnpackedWorkerPath(fileName: string): string {
   return unpacked !== bundled && existsSync(unpacked) ? unpacked : bundled
 }
 
-function registerWakeWordIpc(): void {
+function registerIpc(): void {
   ipcMain.handle('wake-word:get-status', (event) => {
     if (!isTrustedSender(event.sender)) throw new Error('Untrusted wake-word status request.')
     return wakeWordService?.getStatus()
   })
-  ipcMain.handle('wake-word:set-enabled', (event, enabled: unknown) => {
+  ipcMain.handle('wake-word:set-enabled', async (event, enabled: unknown) => {
     if (!isTrustedSender(event.sender) || typeof enabled !== 'boolean') {
       throw new Error('Invalid wake-word setting.')
     }
+    await settingsStore?.update({ wakeWordEnabled: enabled })
     return wakeWordService?.setEnabled(enabled)
   })
   ipcMain.handle('wake-word:retry', (event) => {
@@ -44,15 +54,58 @@ function registerWakeWordIpc(): void {
     if (!isTrustedSender(event.sender)) throw new Error('Untrusted wake-word resume request.')
     wakeWordService?.resumeListening()
   })
-  ipcMain.on('wake-word:audio', (event, payload: unknown) => {
+  ipcMain.on(AUDIO_CHUNK_CHANNEL, (event, payload: unknown) => {
     if (isTrustedSender(event.sender) && isWakeWordAudioPayload(payload)) {
-      wakeWordService?.processAudio(payload)
+      audioRouter?.process(payload)
     }
   })
   ipcMain.on('wake-word:capture-error', (event, error: unknown) => {
     if (isTrustedSender(event.sender) && typeof error === 'string') {
       wakeWordService?.reportCaptureError(error.slice(0, 500))
     }
+  })
+
+  ipcMain.handle('speech:get-status', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted speech status request.')
+    return speechService?.getStatus()
+  })
+
+  ipcMain.handle('models:get-status', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted models status request.')
+    return modelRegistry?.getSnapshot()
+  })
+  ipcMain.handle('models:download', async (event, modelId: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof modelId !== 'string') {
+      throw new Error('Invalid model download request.')
+    }
+    return modelRegistry?.download(modelId)
+  })
+  ipcMain.handle('models:cancel', (event, modelId: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof modelId !== 'string') {
+      throw new Error('Invalid model cancel request.')
+    }
+    return modelRegistry?.cancel(modelId)
+  })
+  ipcMain.handle('models:remove', async (event, modelId: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof modelId !== 'string') {
+      throw new Error('Invalid model remove request.')
+    }
+    return modelRegistry?.remove(modelId)
+  })
+  ipcMain.handle('models:set-active', async (event, modelId: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof modelId !== 'string') {
+      throw new Error('Invalid model selection.')
+    }
+    return modelRegistry?.setActive(modelId)
+  })
+  ipcMain.handle('models:open-card', async (event, url: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof url !== 'string') {
+      throw new Error('Invalid model card request.')
+    }
+    if (!url.startsWith('https://huggingface.co/')) {
+      throw new Error('Only Hugging Face model cards can be opened.')
+    }
+    await shell.openExternal(url)
   })
 }
 
@@ -142,18 +195,36 @@ function createWindow(): void {
     if (mainWindow === window) mainWindow = null
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     window.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     window.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
+  startRuntime()
+}
+
+function startRuntime(): void {
   const wakeWordResourcesRoot = is.dev
     ? join(app.getAppPath(), 'resources', 'wakeword')
     : join(process.resourcesPath, 'wakeword')
+
   wakeWordService?.dispose()
+  speechService?.dispose()
+
+  const settings = settingsStore?.get()
+  audioRouter = new AudioRouter(
+    () => wakeWordService,
+    () => speechService
+  )
+  speechService = new SpeechService({
+    scriptPath: resolveUnpackedWorkerPath('asr-process.js'),
+    models: modelRegistry!,
+    settings: settingsStore!,
+    getWindow: () => mainWindow,
+    getPreroll: () => audioRouter?.takePreroll() ?? new ArrayBuffer(0),
+    onSessionEnd: () => wakeWordService?.resumeListening()
+  })
   wakeWordService = new WakeWordService({
     workerScript: resolveUnpackedWorkerPath('wake-word-worker.js'),
     resources: {
@@ -161,41 +232,51 @@ function createWindow(): void {
       embeddingModelPath: join(wakeWordResourcesRoot, 'embedding_model.onnx'),
       classifierModelPath: join(wakeWordResourcesRoot, 'hey_nimruz.onnx')
     },
-    getWindow: () => mainWindow
+    getWindow: () => mainWindow,
+    enabled: settings?.wakeWordEnabled,
+    onActivated: () => {
+      void speechService?.startSession()
+    },
+    onResume: () => speechService?.cancelSession()
   })
   wakeWordService.initialize()
+  void speechService.preload()
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Keep the native titlebar and vibrancy material on the dark palette.
+app.whenReady().then(async () => {
   nativeTheme.themeSource = 'dark'
-  // Set app user model id for windows
   electronApp.setAppUserModelId('dev.micky.app')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  registerWakeWordIpc()
+  settingsStore = new SettingsStore(app.getPath('userData'))
+  await settingsStore.load()
+  modelRegistry = new ModelRegistry({
+    modelsRoot: join(app.getPath('userData'), 'models'),
+    settings: settingsStore,
+    getWindow: () => mainWindow,
+    isSessionActive: () => Boolean(speechService?.isSessionActive()),
+    onActiveModelChange: (modelId) => {
+      if (!speechService) return
+      if (!modelId) {
+        speechService.dispose()
+        return
+      }
+      void speechService.preload()
+    }
+  })
+  await modelRegistry.initialize()
 
+  registerIpc()
   createWindow()
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
@@ -204,8 +285,8 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   wakeWordService?.dispose()
+  speechService?.dispose()
   wakeWordService = null
+  speechService = null
+  audioRouter = null
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.

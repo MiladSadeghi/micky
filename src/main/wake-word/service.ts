@@ -24,22 +24,27 @@ type WakeWordServiceOptions = {
   workerScript: string
   resources: WakeWordResources
   getWindow: () => BrowserWindow | null
+  enabled?: boolean
+  onActivated?: (activation: WakeWordActivation) => void
+  onResume?: () => void
 }
 
 export const WAKE_WORD_STATUS_CHANNEL = 'wake-word:status'
 export const WAKE_WORD_ACTIVATION_CHANNEL = 'wake-word:activation'
 
-const INTERACTION_TIMEOUT_MS = 6_000
 const SCORE_BROADCAST_INTERVAL_MS = 240
 
 export class WakeWordService {
   #worker: Worker | null = null
   #status: WakeWordStatus = INITIAL_WAKE_WORD_STATUS
-  #interactionTimer: NodeJS.Timeout | null = null
   #lastScoreBroadcast = 0
   #disposed = false
 
-  constructor(private readonly options: WakeWordServiceOptions) {}
+  constructor(private readonly options: WakeWordServiceOptions) {
+    if (options.enabled === false) {
+      this.#status = { ...INITIAL_WAKE_WORD_STATUS, enabled: false, phase: 'disabled' }
+    }
+  }
 
   initialize(): void {
     this.#startWorker()
@@ -54,9 +59,9 @@ export class WakeWordService {
       return this.#status
     }
 
-    this.#clearInteractionTimer()
     this.#status = { ...this.#status, enabled, error: null, latestScore: 0 }
     if (!enabled) {
+      this.options.onResume?.()
       this.#stopWorker()
       this.#update({ phase: 'disabled', captureRequested: false })
     } else {
@@ -101,7 +106,7 @@ export class WakeWordService {
   }
 
   resumeListening(): void {
-    this.#clearInteractionTimer()
+    this.options.onResume?.()
     if (!this.#status.enabled || !this.#worker) return
     this.#worker.postMessage({ type: 'reset' })
     this.#update({
@@ -114,7 +119,6 @@ export class WakeWordService {
 
   dispose(): void {
     this.#disposed = true
-    this.#clearInteractionTimer()
     this.#stopWorker()
   }
 
@@ -204,7 +208,7 @@ export class WakeWordService {
     this.#worker?.postMessage({ type: 'reset' })
     this.#update({
       phase: 'activated',
-      captureRequested: false,
+      captureRequested: true,
       latestScore: confidence,
       lastDetectionAt: detectedAt,
       error: null
@@ -215,12 +219,7 @@ export class WakeWordService {
     if (window && !window.isDestroyed()) {
       window.webContents.send(WAKE_WORD_ACTIVATION_CHANNEL, activation)
     }
-
-    this.#clearInteractionTimer()
-    this.#interactionTimer = setTimeout(() => {
-      this.#interactionTimer = null
-      this.resumeListening()
-    }, INTERACTION_TIMEOUT_MS)
+    this.options.onActivated?.(activation)
   }
 
   #update(update: Partial<WakeWordStatus>): void {
@@ -233,11 +232,5 @@ export class WakeWordService {
     if (window && !window.isDestroyed()) {
       window.webContents.send(WAKE_WORD_STATUS_CHANNEL, this.#status)
     }
-  }
-
-  #clearInteractionTimer(): void {
-    if (!this.#interactionTimer) return
-    clearTimeout(this.#interactionTimer)
-    this.#interactionTimer = null
   }
 }
