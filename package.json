@@ -1,6 +1,6 @@
 {
   "name": "micky",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Micky — Persian-first agentic voice assistant",
   "license": "MIT",
   "engines": {
@@ -14,7 +14,7 @@
     "format": "prettier --write .",
     "dev": "concurrently -k -n vite,electron -c cyan,magenta \"vite\" \"npm:dev:electron\"",
     "dev:electron": "concurrently -k -n esbuild,electron -c yellow,magenta \"node scripts/esbuild.mjs --watch\" \"wait-on tcp:127.0.0.1:5173 dist-electron/preload.cjs && cross-env ELECTRON_RENDERER_URL=http://localhost:5173 node scripts/run-electron.mjs\"",
-    "build:renderer": "vite build",
+    "build:renderer": "vite build && node scripts/verify-renderer-build.mjs",
     "build:electron": "node scripts/esbuild.mjs",
     "build": "npm run build:renderer && npm run build:electron",
     "start": "npm run build && node scripts/run-electron.mjs",
