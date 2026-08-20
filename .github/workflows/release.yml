@@ -1,0 +1,189 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Detect version change
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.version.outputs.changed }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          # A push can contain several commits, so fetch the exact pre-push revision.
+          fetch-depth: 0
+
+      - name: Compare package versions
+        id: version
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          current_version="$(node -p "require('./package.json').version")"
+
+          if [[ ! "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid package version: $current_version" >&2
+            exit 1
+          fi
+
+          previous_version=""
+          if [[ -n "$BEFORE_SHA" && ! "$BEFORE_SHA" =~ ^0+$ ]]; then
+            previous_version="$(git show "$BEFORE_SHA:package.json" 2>/dev/null | node -e "let data=''; process.stdin.on('data', chunk => data += chunk); process.stdin.on('end', () => { if (data) process.stdout.write(JSON.parse(data).version ?? '') })")"
+          fi
+
+          echo "version=$current_version" >> "$GITHUB_OUTPUT"
+          if [[ "$current_version" != "$previous_version" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Version changed: ${previous_version:-<none>} -> $current_version"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "package.json changed without a version change; skipping release builds."
+          fi
+
+  quality:
+    name: Test release candidate
+    needs: version
+    if: needs.version.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.13.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs:
+      - version
+      - quality
+    if: needs.version.outputs.changed == 'true'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS Apple Silicon
+            os: macos-15
+            target: --mac --arm64
+            artifact: micky-macos-arm64
+            files: release/*.dmg
+          - label: macOS Intel
+            os: macos-15-intel
+            target: --mac --x64
+            artifact: micky-macos-x64
+            files: release/*.dmg
+          - label: Windows x64
+            os: windows-latest
+            target: --win --x64
+            artifact: micky-windows-x64
+            files: release/*.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.13.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build application
+        run: pnpm build
+
+      - name: Package installer
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: pnpm exec electron-builder ${{ matrix.target }} --publish never
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs:
+      - version
+      - build
+    if: needs.version.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create or update release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          tag="v$RELEASE_VERSION"
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" artifacts/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" artifacts/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$TARGET_SHA" \
+              --title "Micky $RELEASE_VERSION" \
+              --generate-notes
+          fi

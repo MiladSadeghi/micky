@@ -1,6 +1,6 @@
 {
   "name": "micky",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Micky — Persian-first agentic voice assistant",
   "license": "MIT",
   "engines": {
@@ -116,7 +116,7 @@
       ]
     },
     "dmg": {
-      "artifactName": "${name}-${version}.${ext}"
+      "artifactName": "${name}-${version}-${arch}.${ext}"
     },
     "win": {
       "executableName": "micky",
@@ -126,7 +126,7 @@
       ]
     },
     "nsis": {
-      "artifactName": "${name}-${version}-setup.${ext}",
+      "artifactName": "${name}-${version}-${arch}-setup.${ext}",
       "shortcutName": "${productName}",
       "uninstallDisplayName": "${productName}",
       "createDesktopShortcut": "always"
