@@ -8,6 +8,7 @@ import {
 } from '@/lib/soul'
 import { Button } from '@/components/ui/button'
 import { LlmSettings } from '@/components/llm-settings'
+import { MickyLogo } from '@/components/micky-logo'
 import { useLlm } from '@/hooks/use-llm'
 import { cn } from '@/lib/utils'
 
@@ -45,7 +46,9 @@ export function OnboardingView(): React.JSX.Element {
 
   return (
     <main className="voice-shell flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="app-titlebar shrink-0" aria-hidden="true" />
+      <header className="app-titlebar flex shrink-0 items-center justify-center" aria-hidden="true">
+        <MickyLogo className="size-5 opacity-55" />
+      </header>
 
       {step > 0 ? (
         <div className="flex shrink-0 items-center gap-1.5 px-5 pb-3">
@@ -67,6 +70,7 @@ export function OnboardingView(): React.JSX.Element {
         {step === 0 ? (
           <div className="flex flex-1 flex-col justify-center gap-5 text-start">
             <div className="flex flex-col gap-3">
+              <MickyLogo className="mb-1 size-16 drop-shadow-[0_10px_24px_rgba(0,0,0,0.28)]" />
               <p className="text-[0.75rem] text-muted-foreground">میکی</p>
               <h1 className="text-[1.45rem] leading-8 font-medium tracking-[-0.04em]">
                 سلام. من میکی‌ام.
@@ -168,7 +172,7 @@ export function OnboardingView(): React.JSX.Element {
           <div className="flex min-h-0 flex-1 flex-col gap-2.5 text-start">
             <h1 className="shrink-0 text-[1.05rem] font-medium tracking-[-0.03em]">مدل و کلید</h1>
             <p className="shrink-0 text-[0.75rem] leading-5 text-muted-foreground">
-              کلید OpenRouter را بگذار، یک مدل انتخاب کن. بعدا از تنظیمات عوض می‌شود.
+              از OpenRouter، سرور خودت یا یک مدل محلی استفاده کن. بعدا هم می‌شود عوضش کرد.
             </p>
             <div className="flex min-h-0 flex-1 flex-col">
               <LlmSettings snapshot={llm} compact />

@@ -1,10 +1,18 @@
-import { useState } from 'react'
+import { Check, ChevronDown, LoaderCircle, ShieldCheck, Terminal, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { agentStatusLabel, agentToolLabel } from '@/lib/agent'
 
 type AgentReplyViewProps = {
   turnId: string
   text: string
   phase: string
-  awaitingFollowup?: boolean
+  toolName?: string | null
+  confirmText?: string | null
+  confirmDetail?: string | null
+  dimmed?: boolean
+  onApprove?: () => void
+  onDeny?: () => void
 }
 
 function splitWords(text: string): string[] {
@@ -24,38 +32,89 @@ function ReplyWord({ word, delayIndex }: { word: string; delayIndex: number }): 
   )
 }
 
-export function AgentReplyView({
+function ApprovalCard({
+  purpose,
+  detail,
+  onApprove,
+  onDeny
+}: {
+  purpose: string
+  detail: string | null
+  onApprove?: () => void
+  onDeny?: () => void
+}): React.JSX.Element {
+  const [revealed, setRevealed] = useState(false)
+
+  return (
+    <section className="approval-card" aria-labelledby="approval-title">
+      <div className="approval-heading">
+        <span className="approval-icon" aria-hidden="true">
+          <ShieldCheck />
+        </span>
+        <div className="min-w-0 text-start">
+          <span className="approval-kicker">نیاز به اجازه</span>
+          <p id="approval-title" className="approval-purpose">
+            {purpose}
+          </p>
+        </div>
+      </div>
+
+      <p className="approval-hint">فقط با اجازه تو اجرا می‌شه.</p>
+
+      <div className="flex w-full gap-2" dir="rtl">
+        <Button className="flex-1" onClick={onApprove} disabled={!onApprove}>
+          <Check data-icon="inline-start" />
+          انجامش بده
+        </Button>
+        <Button variant="secondary" className="flex-1" onClick={onDeny} disabled={!onDeny}>
+          <X data-icon="inline-start" />
+          نه، بی‌خیال
+        </Button>
+      </div>
+
+      {detail ? (
+        <>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="text-muted-foreground"
+            onClick={() => setRevealed((open) => !open)}
+            aria-expanded={revealed}
+          >
+            <Terminal data-icon="inline-start" />
+            {revealed ? 'بستن جزئیات' : 'دیدن دستور'}
+            <ChevronDown data-icon="inline-end" className={revealed ? 'rotate-180' : undefined} />
+          </Button>
+          {revealed ? <pre className="tool-confirm-detail">{detail}</pre> : null}
+        </>
+      ) : null}
+    </section>
+  )
+}
+
+function AnimatedReply({
   turnId,
-  text,
+  words,
   phase,
-  awaitingFollowup = false
-}: AgentReplyViewProps): React.JSX.Element {
-  const words = splitWords(text)
-  const [meta, setMeta] = useState({ turnId, count: 0 })
+  dimmed
+}: {
+  turnId: string
+  words: string[]
+  phase: string
+  dimmed: boolean
+}): React.JSX.Element {
+  const previous = useRef({ turnId, count: 0 })
+  const enterFrom = previous.current.turnId === turnId ? previous.current.count : 0
 
-  let enterFrom = meta.count
-  if (meta.turnId !== turnId) {
-    enterFrom = 0
-    setMeta({ turnId, count: words.length })
-  } else if (meta.count !== words.length) {
-    setMeta({ turnId, count: words.length })
-  }
-
-  if (words.length === 0) {
-    const placeholder =
-      phase === 'tool'
-        ? 'یک لحظه، دارم یادداشت می‌کنم…'
-        : phase === 'error'
-          ? '…'
-          : 'دارم فکر می‌کنم…'
-    return <span className="transcript-placeholder text-muted-foreground">{placeholder}</span>
-  }
+  useEffect(() => {
+    previous.current = { turnId, count: words.length }
+  }, [turnId, words.length])
 
   return (
     <p
       className="transcript agent-reply"
       data-final={phase === 'idle' || phase === 'error' ? 'true' : 'false'}
-      data-followup={awaitingFollowup ? 'true' : 'false'}
+      data-followup={dimmed ? 'true' : 'false'}
     >
       {words.map((word, index) => (
         <ReplyWord
@@ -66,4 +125,51 @@ export function AgentReplyView({
       ))}
     </p>
   )
+}
+
+export function AgentReplyView({
+  turnId,
+  text,
+  phase,
+  toolName = null,
+  confirmText = null,
+  confirmDetail = null,
+  dimmed = false,
+  onApprove,
+  onDeny
+}: AgentReplyViewProps): React.JSX.Element {
+  if (phase === 'confirm') {
+    return (
+      <ApprovalCard
+        key={`${turnId}-${confirmDetail ?? ''}`}
+        purpose={confirmText?.trim() || 'این کار رو انجام بدم؟'}
+        detail={confirmDetail}
+        onApprove={onApprove}
+        onDeny={onDeny}
+      />
+    )
+  }
+
+  if (phase === 'tool') {
+    return (
+      <section className="tool-activity" role="status" aria-live="polite">
+        <LoaderCircle className="tool-activity-spinner" aria-hidden="true" />
+        <div className="min-w-0 text-start">
+          <p className="tool-activity-name">{agentToolLabel(toolName)}</p>
+          <p className="tool-activity-status">{agentStatusLabel(phase, toolName)}</p>
+        </div>
+      </section>
+    )
+  }
+
+  const words = splitWords(text)
+  if (words.length === 0) {
+    return (
+      <span className="transcript-placeholder text-muted-foreground">
+        {agentStatusLabel(phase, toolName)}
+      </span>
+    )
+  }
+
+  return <AnimatedReply turnId={turnId} words={words} phase={phase} dimmed={dimmed} />
 }

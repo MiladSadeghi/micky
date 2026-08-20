@@ -1,0 +1,114 @@
+import { Check, ChevronDown, Eye, Mic, Sparkles, Square, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { INITIAL_FLYOVER_SNAPSHOT, type FlyoverSnapshot } from '@/lib/flyover'
+import { Button } from '@/components/ui/button'
+import { MickyLogo } from '@/components/micky-logo'
+import { cn } from '@/lib/utils'
+
+export function FlyoverApp(): React.JSX.Element {
+  const [snapshot, setSnapshot] = useState<FlyoverSnapshot>(INITIAL_FLYOVER_SNAPSHOT)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
+  useEffect(() => {
+    void window.flyoverApi.getSnapshot().then(setSnapshot)
+    return window.flyoverApi.onSnapshotChange(setSnapshot)
+  }, [])
+
+  useEffect(() => {
+    setDetailsOpen(false)
+  }, [snapshot.detail, snapshot.phase])
+
+  const Icon = snapshot.mode === 'screen' ? Eye : snapshot.phase === 'reply' ? Sparkles : Mic
+  const active = ['listening', 'thinking', 'tool', 'cleaning', 'capturing', 'looking'].includes(
+    snapshot.phase
+  )
+  return (
+    <main className="flex h-full items-start justify-center p-2" dir="rtl">
+      <section
+        className="flyover-surface flex min-h-24 w-full items-center gap-3 rounded-[1.4rem] border border-border/70 bg-grey-950/95 px-3.5 py-3 shadow-2xl backdrop-blur-xl"
+        aria-live="polite"
+      >
+        <span
+          className={cn(
+            'grid size-8 shrink-0 place-items-center rounded-full transition-colors',
+            snapshot.phase === 'confirm' ? 'bg-foreground text-background' : 'bg-foreground/10'
+          )}
+        >
+          {snapshot.mode === 'assistant' ? (
+            <MickyLogo className="size-5" />
+          ) : (
+            <Icon className="size-4" aria-hidden="true" />
+          )}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-start">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-[0.66rem] text-muted-foreground">{snapshot.title}</span>
+            <span
+              className="flyover-status-dot size-1 shrink-0 rounded-full bg-muted-foreground"
+              data-active={active}
+              aria-hidden="true"
+            />
+          </div>
+          <p className="line-clamp-3 text-xs leading-5">{snapshot.text || '...'}</p>
+          {detailsOpen && snapshot.detail ? (
+            <code className="block truncate text-[0.58rem] text-muted-foreground" dir="ltr">
+              {snapshot.detail}
+            </code>
+          ) : snapshot.hint ? (
+            <p className="truncate text-[0.62rem] text-muted-foreground">{snapshot.hint}</p>
+          ) : null}
+          {snapshot.phase === 'confirm' && snapshot.detail ? (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="w-fit"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen((open) => !open)}
+            >
+              جزئیات
+              <ChevronDown data-icon="inline-end" />
+            </Button>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {snapshot.canFinish ? (
+            <Button size="icon-sm" variant="secondary" onClick={window.flyoverApi.finishDictation}>
+              <Square data-icon="inline-start" />
+              <span className="sr-only">پایان دیکته</span>
+            </Button>
+          ) : null}
+          {snapshot.canApprove ? (
+            <div className="flex flex-col gap-1">
+              <Button size="sm" onClick={() => window.flyoverApi.resolveApproval(true)}>
+                <Check data-icon="inline-start" />
+                انجام بده
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => window.flyoverApi.resolveApproval(false)}
+              >
+                <X data-icon="inline-start" />
+                نه
+              </Button>
+            </div>
+          ) : null}
+          {snapshot.canRespondToDisclosure ? (
+            <>
+              <Button size="sm" onClick={() => window.flyoverApi.resolveDisclosure(true)}>
+                ادامه
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => window.flyoverApi.resolveDisclosure(false)}
+              >
+                نه
+              </Button>
+            </>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  )
+}
