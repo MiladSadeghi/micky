@@ -1,7 +1,9 @@
-import { MessageSquarePlus, Mic, MicOff, RotateCcw, Settings } from 'lucide-react'
+import { History, MessageSquarePlus, Mic, MicOff, RotateCcw, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ThinkingOrb, type OrbState } from 'thinking-orbs'
 import { AgentReplyView } from '@/components/agent-reply-view'
+import { ChatDetailView, ChatHistoryView } from '@/components/chat-history-view'
+import { ConversationPreview } from '@/components/conversation-preview'
 import { MickyLogo } from '@/components/micky-logo'
 import { Button } from '@/components/ui/button'
 import { OnboardingView } from '@/components/onboarding-view'
@@ -9,6 +11,7 @@ import { SettingsView } from '@/components/settings-view'
 import { TranscriptView } from '@/components/transcript-view'
 import { useAgent } from '@/hooks/use-agent'
 import { useConversation } from '@/hooks/use-conversation'
+import { useChats } from '@/hooks/use-chats'
 import { useModels } from '@/hooks/use-models'
 import { useSoul } from '@/hooks/use-soul'
 import { useSpeech } from '@/hooks/use-speech'
@@ -52,18 +55,20 @@ function FollowupTimer({ until }: { until: number }): React.JSX.Element {
 }
 
 function App(): React.JSX.Element {
-  const [screen, setScreen] = useState<'home' | 'settings'>('home')
+  const [screen, setScreen] = useState<'home' | 'history' | 'chat' | 'settings'>('home')
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const status = useWakeWord()
   const speech = useSpeech()
   const models = useModels()
   const soul = useSoul()
   const agent = useAgent()
   const conversation = useConversation()
+  const chats = useChats()
   const tts = useTts()
   useTurnCues(conversation)
   useEffect(() => window.api.app.onOpenSettings(() => setScreen('settings')), [])
   useEffect(() => {
-    void window.api.app.setWindowMode(screen)
+    void window.api.app.setWindowMode(screen === 'settings' ? 'settings' : 'home')
   }, [screen])
   const phase = status?.phase ?? 'loading'
   const enabled = status?.enabled ?? true
@@ -85,7 +90,7 @@ function App(): React.JSX.Element {
   const responseBusy = agentBusy || ttsBusy
   const showAgent =
     Boolean(agentTurn) &&
-    (agentBusy || ttsBusy || agent?.phase === 'error' || Boolean(agentTurn?.replyText)) &&
+    (agentBusy || ttsBusy || agent?.phase === 'error' || isFollowup || isConfirm) &&
     !(isActivated && transcript?.text && !transcript.isFinal && !isConfirm)
   const showTranscript = isActivated && Boolean(transcript?.text) && !showAgent
   const showFollowupPrompt = followupOpen && !showTranscript && !responseBusy
@@ -96,7 +101,8 @@ function App(): React.JSX.Element {
     (isActivated ? speech?.error : null) ??
     status?.error ??
     null
-  const hasConversation = Boolean(agentTurn)
+  const activeChat = chats?.activeChat ?? null
+  const hasConversation = Boolean(agentTurn || activeChat)
   const showContinuePrompt =
     hasConversation && !responseBusy && !isActivated && !isFollowup && !error
   const showFreshAction =
@@ -134,6 +140,19 @@ function App(): React.JSX.Element {
     void window.api.agent.reset()
   }
 
+  const handleOpenChat = (chatId: string): void => {
+    setSelectedChatId(chatId)
+    setScreen('chat')
+  }
+
+  const handleResumeChat = async (chatId: string): Promise<void> => {
+    const result = await window.api.chats.resume(chatId)
+    if (!result.resumed) return
+    setSelectedChatId(null)
+    setScreen('home')
+    void window.api.wakeWord.activateManually()
+  }
+
   if (soul && !soul.onboardingCompleted) {
     return <OnboardingView />
   }
@@ -143,8 +162,31 @@ function App(): React.JSX.Element {
       <SettingsView
         snapshot={models}
         ttsSnapshot={tts.snapshot}
+        chatsSnapshot={chats}
         sessionActive={sessionActive}
         onBack={() => setScreen('home')}
+      />
+    )
+  }
+
+  if (screen === 'history') {
+    return (
+      <ChatHistoryView snapshot={chats} onBack={() => setScreen('home')} onOpen={handleOpenChat} />
+    )
+  }
+
+  if (screen === 'chat' && selectedChatId) {
+    const selected = chats?.chats.find((chat) => chat.id === selectedChatId)
+    return (
+      <ChatDetailView
+        chatId={selectedChatId}
+        updatedAt={selected?.updatedAt}
+        onBack={() => setScreen('history')}
+        onResume={(chatId) => void handleResumeChat(chatId)}
+        onDeleted={() => {
+          setSelectedChatId(null)
+          setScreen('history')
+        }}
       />
     )
   }
@@ -155,7 +197,21 @@ function App(): React.JSX.Element {
         <MickyLogo className="size-5 opacity-55" />
       </header>
 
-      <section className="flex flex-1 flex-col items-center justify-center gap-9 px-6">
+      <section className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6">
+        <div className="flex min-h-9 max-w-80 items-center">
+          {activeChat ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="max-w-80 text-muted-foreground"
+              onClick={() => handleOpenChat(activeChat.id)}
+            >
+              <span className="truncate">{activeChat.title}</span>
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">همراه کوچیکت برای انجام کارها</p>
+          )}
+        </div>
         <button
           type="button"
           className="orb-trigger"
@@ -207,7 +263,10 @@ function App(): React.JSX.Element {
           </span>
         </button>
 
-        <div className="flex min-h-16 max-w-72 flex-col items-center gap-3" aria-live="polite">
+        <div
+          className="flex min-h-16 w-full max-w-80 flex-col items-center gap-3"
+          aria-live="polite"
+        >
           {showAgent && agentTurn ? (
             <AgentReplyView
               turnId={agentTurn.turnId}
@@ -228,6 +287,8 @@ function App(): React.JSX.Element {
               text={transcript.text}
               isFinal={transcript.isFinal}
             />
+          ) : activeChat && !error && !isActivated && !isFollowup ? (
+            <ConversationPreview chat={activeChat} onOpen={() => handleOpenChat(activeChat.id)} />
           ) : (
             <p
               className={cn(
@@ -266,6 +327,15 @@ function App(): React.JSX.Element {
       </section>
 
       <footer className="flex items-center justify-center gap-1 pb-5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground"
+          onClick={() => setScreen('history')}
+          aria-label="گفتگوهای قبلی"
+        >
+          <History />
+        </Button>
         {hasConversation && !showFreshAction ? (
           <Button
             variant="ghost"

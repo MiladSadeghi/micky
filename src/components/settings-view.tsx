@@ -1,10 +1,12 @@
 import {
   ArrowRight,
   BrainCircuit,
+  CircleAlert,
   CircleHelp,
   Download,
   Ear,
   ExternalLink,
+  History,
   Keyboard,
   Mic,
   Sparkles,
@@ -17,12 +19,25 @@ import type { AsrModelView, ModelsSnapshot } from '@/lib/asr'
 import type { TtsSnapshot } from '@/lib/tts'
 import type { SettingsSnapshot } from '@/lib/settings'
 import type { LlmSnapshot } from '@/lib/llm'
+import type { ChatsSnapshot } from '@/lib/chats'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from '@/components/ui/alert-dialog'
 import {
   Card,
   CardAction,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle
 } from '@/components/ui/card'
@@ -30,10 +45,13 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel
 } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
+import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LlmSettings } from '@/components/llm-settings'
@@ -43,8 +61,16 @@ import { TtsSettings } from '@/components/tts-settings'
 import { useLlm } from '@/hooks/use-llm'
 import { useSettings } from '@/hooks/use-settings'
 import { useSoul } from '@/hooks/use-soul'
+import {
+  shortcutAccessibleLabel,
+  shortcutDisplayKeys,
+  shortcutFromKeyboardEvent,
+  shortcutPlatformLabel,
+  shortcutPreviewKeys,
+  type DesktopPlatform
+} from '@/lib/shortcuts'
 
-type SettingsTab = 'asr' | 'llm' | 'tts' | 'soul' | 'shortcuts' | 'about'
+type SettingsTab = 'asr' | 'llm' | 'tts' | 'soul' | 'history' | 'shortcuts' | 'about'
 
 const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
   asr: { title: 'شنیدن', description: 'مدل محلی تبدیل صدای تو به متن' },
@@ -54,6 +80,10 @@ const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
   },
   tts: { title: 'صدای میکی', description: 'سرویس و صدایی که جواب‌ها را می‌خواند' },
   soul: { title: 'آشنایی', description: 'شخصیت میکی و چیزهایی که از تو به یاد دارد' },
+  history: {
+    title: 'گفتگوها',
+    description: 'متن گفتگوهایی که فقط روی همین دستگاه نگه داشته می‌شوند'
+  },
   shortcuts: {
     title: 'میانبرها',
     description: 'دستیار و دیکته را از هر برنامه‌ای سریع صدا بزن'
@@ -69,6 +99,7 @@ const SETTINGS_TABS = [
   { id: 'llm', label: 'مدل', icon: BrainCircuit },
   { id: 'tts', label: 'صدا', icon: Volume2 },
   { id: 'soul', label: 'شخصیت', icon: Sparkles },
+  { id: 'history', label: 'گفتگوها', icon: History },
   { id: 'shortcuts', label: 'میانبرها', icon: Keyboard },
   { id: 'about', label: 'روش کار', icon: CircleHelp }
 ] satisfies ReadonlyArray<{ id: SettingsTab; label: string; icon: typeof Ear }>
@@ -95,6 +126,7 @@ const HOW_MICKY_WORKS = [
 type SettingsViewProps = {
   snapshot: ModelsSnapshot | null
   ttsSnapshot: TtsSnapshot | null
+  chatsSnapshot: ChatsSnapshot | null
   sessionActive: boolean
   onBack: () => void
 }
@@ -102,6 +134,7 @@ type SettingsViewProps = {
 export function SettingsView({
   snapshot,
   ttsSnapshot,
+  chatsSnapshot,
   sessionActive,
   onBack
 }: SettingsViewProps): React.JSX.Element {
@@ -169,6 +202,10 @@ export function SettingsView({
           <PersonalitySettings snapshot={soul} />
         </SettingsTabPanel>
 
+        <SettingsTabPanel tab="history">
+          {settings ? <HistorySettings settings={settings} chats={chatsSnapshot} /> : null}
+        </SettingsTabPanel>
+
         <SettingsTabPanel tab="shortcuts">
           {settings ? <ShortcutSettings settings={settings} /> : null}
         </SettingsTabPanel>
@@ -203,34 +240,55 @@ function SettingsTabPanel({
 }
 
 function ShortcutSettings({ settings }: { settings: SettingsSnapshot }): React.JSX.Element {
+  const platform = window.api.app.platform
   return (
     <div className="flex flex-col gap-3">
       <Card size="sm" className="bg-card/30">
         <CardHeader>
           <CardTitle>فراخوانی سریع</CardTitle>
-          <CardDescription>روی هر کادر بزن و ترکیب کلید تازه را فشار بده</CardDescription>
+          <CardDescription>حتی وقتی پنجره میکی بسته است، از هر برنامه‌ای صدایش کن</CardDescription>
+          <CardAction>
+            <Badge variant="secondary" dir="ltr">
+              {shortcutPlatformLabel(platform)}
+            </Badge>
+          </CardAction>
         </CardHeader>
         <CardContent>
-          <FieldGroup className="gap-3">
+          <FieldGroup className="gap-4">
             <ShortcutField
               id="assistant-shortcut"
-              label="دستیار"
+              label="دستیار میکی"
+              description="میکی را باز می‌کند و مستقیم شروع به شنیدن می‌کند"
               value={settings.assistantShortcut}
+              platform={platform}
               onChange={(value) => window.api.settings.setShortcut('assistant', value)}
             />
+            <Separator />
             <ShortcutField
               id="dictation-shortcut"
-              label="دیکته"
+              label="دیکته در برنامه فعال"
+              description="صدایت را به متن تبدیل می‌کند و همان‌جا می‌نویسد"
               value={settings.dictationShortcut}
+              platform={platform}
               onChange={(value) => window.api.settings.setShortcut('dictation', value)}
             />
-            {settings.shortcutError ? (
-              <FieldDescription className="text-destructive">
-                {settings.shortcutError}
-              </FieldDescription>
-            ) : null}
           </FieldGroup>
         </CardContent>
+        <CardFooter className="gap-2 text-start">
+          {settings.shortcutError ? (
+            <>
+              <CircleAlert className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+              <FieldError className="text-xs">{settings.shortcutError}</FieldError>
+            </>
+          ) : (
+            <>
+              <Keyboard className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <p className="text-xs leading-5 text-muted-foreground">
+                روی کلیدها بزن و ترکیب تازه را همزمان فشار بده؛ با Esc لغوش کن
+              </p>
+            </>
+          )}
+        </CardFooter>
       </Card>
 
       <Card size="sm" className="bg-card/30">
@@ -268,38 +326,181 @@ function ShortcutSettings({ settings }: { settings: SettingsSnapshot }): React.J
   )
 }
 
+function HistorySettings({
+  settings,
+  chats
+}: {
+  settings: SettingsSnapshot
+  chats: ChatsSnapshot | null
+}): React.JSX.Element {
+  const count = chats?.totalCount ?? 0
+  return (
+    <div className="flex flex-col gap-3">
+      <Card size="sm" className="bg-card/30">
+        <CardHeader>
+          <CardTitle id="chat-history-label">ذخیره گفتگوها</CardTitle>
+          <CardDescription>
+            متن نهایی حرف‌های تو و جواب میکی را محلی نگه می‌دارد؛ صدای خام و خروجی ابزارها ذخیره
+            نمی‌شوند
+          </CardDescription>
+          <CardAction>
+            <Switch
+              dir="ltr"
+              checked={settings.chatHistoryEnabled}
+              aria-labelledby="chat-history-label"
+              onCheckedChange={(enabled) => void window.api.settings.setChatHistoryEnabled(enabled)}
+            />
+          </CardAction>
+        </CardHeader>
+      </Card>
+
+      <Card size="sm" className="bg-card/30">
+        <CardHeader>
+          <CardTitle>پاک‌کردن تاریخچه</CardTitle>
+          <CardDescription>
+            {count > 0
+              ? `${count.toLocaleString('fa-IR')} گفتگو روی این دستگاه است`
+              : 'هنوز گفتگویی ذخیره نشده'}
+          </CardDescription>
+          <CardAction>
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={
+                  <Button variant="destructive" size="sm" disabled={count === 0}>
+                    <Trash2 data-icon="inline-start" />
+                    پاک‌کردن همه
+                  </Button>
+                }
+              />
+              <AlertDialogContent size="sm">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>همه گفتگوها حذف شوند؟</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    این تاریخچه از دستگاه پاک می‌شود و میکی دیگر نمی‌تواند آن را پیدا کند.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>نه</AlertDialogCancel>
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={() => void window.api.chats.clear()}
+                  >
+                    حذف همه
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardAction>
+        </CardHeader>
+      </Card>
+    </div>
+  )
+}
+
 function ShortcutField({
   id,
   label,
+  description,
   value,
+  platform,
   onChange
 }: {
   id: string
   label: string
+  description: string
   value: string
+  platform: DesktopPlatform
   onChange: (value: string) => Promise<SettingsSnapshot>
 }): React.JSX.Element {
-  const [recording, setRecording] = useState(false)
+  const [mode, setMode] = useState<'idle' | 'recording' | 'saving'>('idle')
+  const [pressedKeys, setPressedKeys] = useState<string[]>([])
+  const [saveFailed, setSaveFailed] = useState(false)
+  const recording = mode === 'recording'
+  const saving = mode === 'saving'
+  const currentKeys = shortcutDisplayKeys(value, platform)
+  const visibleKeys = recording && pressedKeys.length > 0 ? pressedKeys : currentKeys
+
   return (
-    <Field orientation="horizontal">
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
+    <Field orientation="responsive" data-invalid={saveFailed || undefined}>
+      <FieldContent className="min-w-0">
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        <FieldDescription className="text-[0.68rem] leading-5">{description}</FieldDescription>
+        {saveFailed ? <FieldError>ثبت میانبر ممکن نشد؛ دوباره امتحان کن.</FieldError> : null}
+      </FieldContent>
+      <Button
         id={id}
-        className="w-52 text-left font-mono text-[0.62rem]"
+        type="button"
+        variant={recording ? 'secondary' : 'outline'}
+        size="lg"
+        className="h-11 w-full justify-between @md/field-group:w-64"
         dir="ltr"
-        readOnly
-        value={recording ? 'Press shortcut…' : value}
-        onFocus={() => setRecording(true)}
-        onBlur={() => setRecording(false)}
-        onKeyDown={(event) => {
-          event.preventDefault()
-          const accelerator = toAccelerator(event)
-          if (!accelerator) return
-          setRecording(false)
-          event.currentTarget.blur()
-          void onChange(accelerator)
+        disabled={saving}
+        aria-pressed={recording}
+        aria-invalid={saveFailed || undefined}
+        aria-label={
+          recording
+            ? `در حال دریافت میانبر ${label}`
+            : `تغییر میانبر ${label}؛ میانبر فعلی ${shortcutAccessibleLabel(value, platform)}`
+        }
+        onClick={() => {
+          setSaveFailed(false)
+          setPressedKeys([])
+          setMode('recording')
         }}
-      />
+        onBlur={() => {
+          if (recording) {
+            setPressedKeys([])
+            setMode('idle')
+          }
+        }}
+        onKeyDown={(event) => {
+          if (!recording) return
+          if (event.key === 'Tab') {
+            setPressedKeys([])
+            setMode('idle')
+            return
+          }
+          event.preventDefault()
+          if (event.key === 'Escape') {
+            setPressedKeys([])
+            setMode('idle')
+            event.currentTarget.blur()
+            return
+          }
+          setPressedKeys(shortcutPreviewKeys(event, platform))
+          const accelerator = shortcutFromKeyboardEvent(event, platform)
+          if (!accelerator) return
+          setMode('saving')
+          void onChange(accelerator)
+            .then(() => {
+              setPressedKeys([])
+              setMode('idle')
+            })
+            .catch(() => {
+              setPressedKeys([])
+              setSaveFailed(true)
+              setMode('idle')
+            })
+        }}
+        onKeyUp={() => {
+          if (recording) setPressedKeys([])
+        }}
+      >
+        {recording && pressedKeys.length === 0 ? (
+          <span className="text-xs text-muted-foreground" dir="rtl">
+            ترکیب را فشار بده…
+          </span>
+        ) : (
+          <KbdGroup aria-hidden="true">
+            {visibleKeys.map((key, index) => (
+              <Kbd key={`${key}-${index}`}>{key}</Kbd>
+            ))}
+          </KbdGroup>
+        )}
+        <span className="text-[0.65rem] text-muted-foreground" dir="rtl">
+          {saving ? 'در حال ثبت…' : recording ? 'منتظر کلیدها' : 'تغییر'}
+        </span>
+      </Button>
     </Field>
   )
 }
@@ -363,25 +564,14 @@ function VisionModelSetting({
   )
 }
 
-function toAccelerator(event: React.KeyboardEvent<HTMLInputElement>): string | null {
-  if (['Control', 'Meta', 'Shift', 'Alt'].includes(event.key)) return null
-  if (!event.ctrlKey && !event.metaKey && !event.altKey) return null
-  const modifiers = [
-    event.ctrlKey || event.metaKey ? 'CommandOrControl' : null,
-    event.altKey ? 'Alt' : null,
-    event.shiftKey ? 'Shift' : null
-  ].filter(Boolean)
-  const key =
-    event.code === 'Space' ? 'Space' : event.key.length === 1 ? event.key.toUpperCase() : event.key
-  return [...modifiers, key].join('+')
-}
-
 function HowMickyWorks(): React.JSX.Element {
   return (
     <Card size="sm" className="bg-card/30">
       <CardHeader>
         <CardTitle>یک چرخه ساده</CardTitle>
-        <CardDescription>بدون صفحه چت یا فهرست گفتگو؛ فقط بگو و برگرد سر کارت</CardDescription>
+        <CardDescription>
+          صدا همیشه جلوتر است؛ گفتگوهای قبلی فقط وقتی خودت بخواهی باز می‌شوند
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <ol className="flex flex-col gap-4">

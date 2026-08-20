@@ -286,6 +286,15 @@
     border-color: color-mix(in srgb, var(--foreground) 22%, transparent);
     animation: listening-ripple 2.2s ease-out infinite;
   }
+
+  .conversation-preview {
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    background: color-mix(in srgb, var(--card) 62%, transparent);
+    box-shadow:
+      0 1rem 3rem color-mix(in srgb, black 18%, transparent),
+      inset 0 1px color-mix(in srgb, var(--foreground) 5%, transparent);
+    backdrop-filter: blur(1.1rem);
+  }
 }
 
 @keyframes flyover-pulse {

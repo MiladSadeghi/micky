@@ -1,9 +1,24 @@
 import { Check, ChevronDown, Eye, Mic, Sparkles, Square, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { ThinkingOrb, type OrbState } from 'thinking-orbs'
 import { INITIAL_FLYOVER_SNAPSHOT, type FlyoverSnapshot } from '@/lib/flyover'
 import { Button } from '@/components/ui/button'
-import { MickyLogo } from '@/components/micky-logo'
 import { cn } from '@/lib/utils'
+
+const FLYOVER_ORB_STATE: Record<FlyoverSnapshot['phase'], OrbState> = {
+  hidden: 'breathing',
+  listening: 'listening',
+  thinking: 'working',
+  tool: 'searching',
+  confirm: 'listening',
+  cleaning: 'shaping',
+  capturing: 'searching',
+  looking: 'searching',
+  disclosure: 'listening',
+  reply: 'composing',
+  done: 'breathing',
+  error: 'shaping'
+}
 
 export function FlyoverApp(): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<FlyoverSnapshot>(INITIAL_FLYOVER_SNAPSHOT)
@@ -35,7 +50,14 @@ export function FlyoverApp(): React.JSX.Element {
           )}
         >
           {snapshot.mode === 'assistant' ? (
-            <MickyLogo className="size-5" />
+            <ThinkingOrb
+              state={FLYOVER_ORB_STATE[snapshot.phase]}
+              size={20}
+              theme={snapshot.phase === 'confirm' ? 'light' : 'dark'}
+              speed={active ? 1.2 : 0.85}
+              paused={snapshot.phase === 'hidden' || snapshot.phase === 'error'}
+              aria-hidden="true"
+            />
           ) : (
             <Icon className="size-4" aria-hidden="true" />
           )}
