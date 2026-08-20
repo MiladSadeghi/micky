@@ -24,12 +24,15 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.31",
     "@base-ui/react": "^1.7.0",
+    "@mozilla/readability": "^0.6.0",
     "@napi-rs/keyring": "^1.3.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "ai": "^7.0.66",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jsdom": "^30.0.1",
     "lucide-react": "^1.31.0",
     "onnxruntime-node": "^1.27.0",
     "shadcn": "^4.18.0",
@@ -41,6 +44,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
@@ -84,7 +88,7 @@
         "to": "wakeword"
       }
     ],
-    "icon": "assets/icon.png",
+    "icon": "build/icon.png",
     "files": [
       "dist/**",
       "dist-electron/**",
@@ -98,10 +102,11 @@
     },
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "assets/icon.png",
+      "icon": "build/icon.icns",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "میکی برای شنیدن عبارت بیدارباش و صدای شما به میکروفن نیاز دارد.",
+        "NSScreenCaptureUsageDescription": "میکی فقط با درخواست صریح شما، نمایشگر فعال را برای توضیح صفحه می‌بیند.",
         "NSDocumentsFolderUsageDescription": "Application requests access to the user's Documents folder.",
         "NSDownloadsFolderUsageDescription": "Application requests access to the user's Downloads folder."
       },
@@ -115,6 +120,7 @@
     },
     "win": {
       "executableName": "micky",
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ]
@@ -126,6 +132,7 @@
       "createDesktopShortcut": "always"
     },
     "linux": {
+      "icon": "build/icons",
       "target": [
         "AppImage"
       ],

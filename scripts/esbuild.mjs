@@ -17,7 +17,7 @@ const shared = {
   sourcemap: true,
   alias,
   // Electron and native addons are provided at runtime.
-  external: ['electron', 'onnxruntime-node', 'sherpa-onnx-node', '@napi-rs/keyring'],
+  external: ['electron', 'onnxruntime-node', 'sherpa-onnx-node', '@napi-rs/keyring', 'jsdom'],
   logLevel: 'info'
 }
 
@@ -38,6 +38,13 @@ const preloadConfig = {
   format: 'cjs'
 }
 
+const flyoverPreloadConfig = {
+  ...shared,
+  entryPoints: [path.join(root, 'electron/flyover-preload.ts')],
+  outfile: path.join(root, 'dist-electron/flyover-preload.cjs'),
+  format: 'cjs'
+}
+
 const asrProcessConfig = {
   ...shared,
   entryPoints: [path.join(root, 'electron/speech/asr-process.ts')],
@@ -54,15 +61,18 @@ const wakeWordWorkerConfig = {
 
 async function run() {
   if (watch) {
-    const [mainCtx, preloadCtx, asrProcessCtx, wakeWordWorkerCtx] = await Promise.all([
-      context(mainConfig),
-      context(preloadConfig),
-      context(asrProcessConfig),
-      context(wakeWordWorkerConfig)
-    ])
+    const [mainCtx, preloadCtx, flyoverPreloadCtx, asrProcessCtx, wakeWordWorkerCtx] =
+      await Promise.all([
+        context(mainConfig),
+        context(preloadConfig),
+        context(flyoverPreloadConfig),
+        context(asrProcessConfig),
+        context(wakeWordWorkerConfig)
+      ])
     await Promise.all([
       mainCtx.watch(),
       preloadCtx.watch(),
+      flyoverPreloadCtx.watch(),
       asrProcessCtx.watch(),
       wakeWordWorkerCtx.watch()
     ])
@@ -71,6 +81,7 @@ async function run() {
     await Promise.all([
       build(mainConfig),
       build(preloadConfig),
+      build(flyoverPreloadConfig),
       build(asrProcessConfig),
       build(wakeWordWorkerConfig)
     ])

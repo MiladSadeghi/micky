@@ -1,0 +1,47 @@
+# Micky — agent notes
+
+Persian-first voice assistant. The bet: AI software got too complicated. Micky is a small companion you talk to, not a workspace. Say the thing, get the work done, go back to life.
+
+If a feature needs a new screen, a settings panel, or a chat log to make sense, it probably does not belong here.
+
+## Shape
+
+Electron app. Renderer is a 400×712 orb: wake / listen / think / reply. No sidebar, no thread list.
+
+| Path | Role |
+| --- | --- |
+| `src/` | Vite React UI. Mic capture, earcons, status text. No business logic. |
+| `src/lib/` | Shared types and constants used by both processes. |
+| `electron/` | Main process. All real work. |
+| `electron/conversation/` | Turn machine: `idle` → `agent` → `confirm` → `followup` → idle. |
+| `electron/system/` | Path guard, file tools, command policy, Seatbelt sandbox. |
+| `electron/wake-word/` | Local “هی میکی” detector (ONNX worker). |
+| `electron/speech/` | Local Shenava ASR (`sherpa-onnx` child process). |
+| `electron/agent/` | OpenRouter tool loop. Short spoken Persian replies. |
+| `electron/soul/` | Markdown layers: soul, user profile, memory. |
+| `electron/llm/` | Model + OpenRouter key (OS keychain). |
+
+IPC lives in `electron/preload.ts` / `src/lib/desktop-api.ts`. Renderer talks only through `window.api`.
+
+## Voice loop
+
+1. Wake word (or tap the orb) → chime → ASR session.
+2. Final transcript → `ConversationController` → `AgentService.respond`.
+3. On complete: 12s follow-up listen (empty ASR endpoints do **not** kill the window).
+4. Silence or `end_conversation` → back to wake word. History is cleared only on end / «گفتگوی تازه».
+
+ASR is messy: no punctuation, broken words, English as Persian phonetics. Design for that. Never surface “corrected” transcripts or ask the user to type.
+
+## Agent + tools
+
+Tools are in `electron/agent/tools.ts`. Status copy for the orb is in `agentStatusLabel` (`src/lib/agent.ts`). Memory: `remember`, `recall`, `update_user_profile`. Clock: `get_current_datetime`. Session: `end_conversation`. System (kill switch in settings): `read_file`, `list_directory`, `search_files`, `search_in_files`, `open_app`, `run_command`. The orb shows a one-line Persian summary, never raw arguments; tap a confirm prompt to reveal the command. Risky commands need a spoken yes, enforced outside the model.
+
+Replies are **speech**: 1–3 short sentences, no markdown/emoji/lists. Tool guidance and the voice contract live in `electron/soul/prompt.ts` — keep them locked unless the product voice changes.
+
+## How to add something
+
+- Prefer a tool + a one-line Persian status over a new view.
+- Wire new session behavior through `ConversationController`, not the React tree.
+- Keep the home shell: orb, a few words, footer icons.
+- `pnpm test` and `pnpm typecheck` after behavior changes. Tests are `*.test.ts` next to the code (`tsx --test`).
+- Do not add: chat history UI, plugin systems, extra cloud STT, dashboards, onboarding steps that are not required to hear or answer.
