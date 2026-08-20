@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - package.json
+      - .github/workflows/release.yml
 
 permissions:
   contents: read
@@ -48,12 +49,15 @@ jobs:
           fi
 
           echo "version=$current_version" >> "$GITHUB_OUTPUT"
-          if [[ "$current_version" != "$previous_version" ]]; then
+          if git rev-parse --quiet --verify "refs/tags/v$current_version" >/dev/null; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "v$current_version is already released; skipping release builds."
+          elif [[ "$current_version" != "$previous_version" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "Version changed: ${previous_version:-<none>} -> $current_version"
           else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "package.json changed without a version change; skipping release builds."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "v$current_version has no release tag; retrying its release builds."
           fi
 
   quality:
@@ -75,7 +79,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 22.13.0
+          node-version: 24.8.0
           cache: pnpm
 
       - name: Install dependencies
@@ -128,7 +132,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 22.13.0
+          node-version: 24.8.0
           cache: pnpm
 
       - name: Install dependencies

@@ -99,7 +99,7 @@ Models and API usage may have their own licenses, privacy policies, and costs. M
 
 ### Requirements
 
-- Node.js 22.13 or newer
+- Node.js 24.8 or newer
 - pnpm 9 or newer
 - macOS or Windows for the supported desktop builds
 
@@ -149,7 +149,7 @@ Renderer code talks to the main process only through the preload API in `electro
 
 Every push and pull request runs typechecking and the test suite on GitHub Actions.
 
-Release builds are intentionally version-driven. A push to `main` only starts the macOS and Windows packaging jobs when the `version` field in `package.json` changed from the previous commit. After all native builds succeed, the workflow creates or updates the matching `v<version>` GitHub Release and attaches the installers.
+Release builds are intentionally version-driven. A push to `main` only starts the macOS and Windows packaging jobs when the version in `package.json` does not have a matching release tag yet. This catches a new version bump and safely retries an unpublished version after a failed workflow. After all native builds succeed, the workflow creates the matching `v<version>` GitHub Release and attaches the installers.
 
 To prepare a future release:
 
