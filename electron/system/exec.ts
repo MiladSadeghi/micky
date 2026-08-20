@@ -1,0 +1,167 @@
+import { homedir } from 'node:os'
+import { classifyCommand } from './policy'
+import {
+  PathDeniedError,
+  lineLooksSecret,
+  looksLikePath,
+  resolveSafePath,
+  type PathGuardOptions
+} from './paths'
+import { COMMAND_TIMEOUT_MS, isSandboxAvailable, runArgv, type ExecResult } from './sandbox'
+
+export type ApprovalRequest = {
+  purpose: string
+  command: string
+  toolName?: string
+  detail?: string
+}
+
+export type RunCommandResult = {
+  ran: boolean
+  approved?: boolean
+  blocked?: boolean
+  exitCode?: number | null
+  stdout?: string
+  stderr?: string
+  truncated?: boolean
+  timedOut?: boolean
+  message?: string
+}
+
+export async function runUserCommand(
+  command: string,
+  purpose: string,
+  options: {
+    requestApproval: (request: ApprovalRequest) => Promise<boolean>
+    abortSignal?: AbortSignal
+    path?: PathGuardOptions
+  }
+): Promise<RunCommandResult> {
+  const classified = await classifyCommand(command, options.path)
+  if (classified.tier === 'blocked') {
+    return {
+      ran: false,
+      blocked: true,
+      message: 'این دستور اجازه اجرا ندارد.'
+    }
+  }
+
+  if (classified.tier === 'confirm') {
+    const approved = await options.requestApproval({
+      purpose: purpose.trim() || 'می‌خوام یه دستور روی مک اجرا کنم.',
+      command
+    })
+    if (!approved) {
+      return { ran: false, approved: false, message: 'کاربر اجازه نداد.' }
+    }
+    return finish(
+      await runArgv(classified.argv ?? ['/bin/bash', '-lc', command], {
+        sandboxed: false,
+        abortSignal: options.abortSignal,
+        cwd: options.path?.home ?? homedir()
+      })
+    )
+  }
+
+  if (!classified.argv) {
+    return { ran: false, blocked: true, message: 'این دستور قابل اجرا نیست.' }
+  }
+  if (!isSandboxAvailable()) {
+    const approved = await options.requestApproval({
+      purpose: purpose.trim() || 'می‌خوام یه دستور روی مک اجرا کنم.',
+      command
+    })
+    if (!approved) return { ran: false, approved: false, message: 'کاربر اجازه نداد.' }
+    return finish(
+      await runArgv(classified.argv, {
+        sandboxed: false,
+        abortSignal: options.abortSignal,
+        cwd: options.path?.home ?? homedir()
+      })
+    )
+  }
+
+  return finish(
+    await runArgv(classified.argv, {
+      sandboxed: true,
+      abortSignal: options.abortSignal,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      cwd: options.path?.home ?? homedir()
+    })
+  )
+}
+
+export async function openUserTarget(
+  target: string,
+  options: PathGuardOptions = {}
+): Promise<{ opened: boolean; message?: string }> {
+  if (process.platform !== 'darwin') {
+    return { opened: false, message: 'باز کردن برنامه فعلاً فقط روی مک است.' }
+  }
+  const trimmed = target.trim()
+  if (!trimmed) return { opened: false, message: 'چیزی برای باز کردن نیست.' }
+  if (/[\n\r;|&$`<>]/.test(trimmed)) {
+    return { opened: false, message: 'این هدف مجاز نیست.' }
+  }
+
+  if (/^(https?:\/\/|mailto:)/i.test(trimmed)) {
+    if (!/^https?:\/\//i.test(trimmed) && !/^mailto:/i.test(trimmed)) {
+      return { opened: false, message: 'فقط لینک‌های معمولی باز می‌شوند.' }
+    }
+    const result = await runArgv(['/usr/bin/open', trimmed], {
+      sandboxed: false,
+      timeoutMs: 8_000
+    })
+    return result.ok ? { opened: true } : { opened: false, message: result.stderr || 'باز نشد.' }
+  }
+
+  if (looksLikePath(trimmed)) {
+    try {
+      const path = await resolveSafePath(trimmed, options)
+      const result = await runArgv(['/usr/bin/open', path], {
+        sandboxed: false,
+        timeoutMs: 8_000
+      })
+      return result.ok ? { opened: true } : { opened: false, message: result.stderr || 'باز نشد.' }
+    } catch (error) {
+      if (error instanceof PathDeniedError) {
+        return { opened: false, message: error.message }
+      }
+      throw error
+    }
+  }
+
+  if (trimmed.startsWith('-')) {
+    return { opened: false, message: 'اسم برنامه نامعتبر است.' }
+  }
+  const result = await runArgv(['/usr/bin/open', '-a', trimmed], {
+    sandboxed: false,
+    timeoutMs: 8_000
+  })
+  return result.ok
+    ? { opened: true }
+    : { opened: false, message: result.stderr || 'برنامه پیدا نشد.' }
+}
+
+function finish(result: ExecResult): RunCommandResult {
+  return {
+    ran: true,
+    exitCode: result.exitCode,
+    stdout: scrub(result.stdout),
+    stderr: scrub(result.stderr),
+    truncated: result.truncated,
+    timedOut: result.timedOut,
+    message: result.timedOut
+      ? 'زمان دستور تمام شد.'
+      : result.sandboxDenied
+        ? 'سندباکس جلوی این دستور را گرفت.'
+        : undefined
+  }
+}
+
+function scrub(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !lineLooksSecret(line))
+    .join('\n')
+}

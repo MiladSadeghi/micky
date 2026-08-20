@@ -1,9 +1,11 @@
 import type { AgentDelta, AgentStatus } from '@/lib/agent'
 import type { ConversationStatus } from '@/lib/conversation'
 import type { ModelsSnapshot, SpeechStatus, SpeechTranscript } from '@/lib/asr'
-import type { LlmSnapshot } from '@/lib/llm'
+import type { LlmProviderId, LlmSnapshot, OpenAiCompatibleProviderId } from '@/lib/llm'
+import type { SettingsSnapshot } from '@/lib/settings'
 import type { SoulFileId, SoulSnapshot, UserProfileDraft } from '@/lib/soul'
 import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
+import type { TtsPlayback, TtsProviderId, TtsSnapshot, TtsStatus } from '@/lib/tts'
 
 export type MickyAPI = {
   wakeWord: {
@@ -22,8 +24,26 @@ export type MickyAPI = {
     onStatusChange: (listener: (status: SpeechStatus) => void) => () => void
     onTranscript: (listener: (transcript: SpeechTranscript) => void) => () => void
   }
+  tts: {
+    getStatus: () => Promise<TtsStatus>
+    getSnapshot: () => Promise<TtsSnapshot>
+    setEnabled: (enabled: boolean) => Promise<TtsSnapshot>
+    setProvider: (providerId: TtsProviderId) => Promise<TtsSnapshot>
+    setVoice: (providerId: TtsProviderId, voiceId: string) => Promise<TtsSnapshot>
+    setApiKey: (providerId: TtsProviderId, apiKey: string) => Promise<TtsSnapshot>
+    clearApiKey: (providerId: TtsProviderId) => Promise<TtsSnapshot>
+    refreshVoices: () => Promise<TtsSnapshot>
+    preview: () => Promise<void>
+    openKeys: (providerId: TtsProviderId) => Promise<void>
+    playbackFinished: (id: string, error?: string) => void
+    onStatusChange: (listener: (status: TtsStatus) => void) => () => void
+    onSnapshotChange: (listener: (snapshot: TtsSnapshot) => void) => () => void
+    onPlayback: (listener: (playback: TtsPlayback) => void) => () => void
+    onStop: (listener: (id: string) => void) => () => void
+  }
   conversation: {
     getStatus: () => Promise<ConversationStatus>
+    resolveApproval: (approved: boolean) => void
     onStatusChange: (listener: (status: ConversationStatus) => void) => () => void
   }
   models: {
@@ -43,13 +63,29 @@ export type MickyAPI = {
     onStatusChange: (listener: (status: AgentStatus) => void) => () => void
     onDelta: (listener: (delta: AgentDelta) => void) => () => void
   }
+  settings: {
+    getSnapshot: () => Promise<SettingsSnapshot>
+    setSystemToolsEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
+    setShortcut: (kind: 'assistant' | 'dictation', accelerator: string) => Promise<SettingsSnapshot>
+    setDictationAiCleanup: (enabled: boolean) => Promise<SettingsSnapshot>
+    setDictationAutoPaste: (enabled: boolean) => Promise<SettingsSnapshot>
+    setLaunchAtLogin: (enabled: boolean) => Promise<SettingsSnapshot>
+    setVisionModel: (modelId: string) => Promise<SettingsSnapshot>
+    onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void) => () => void
+  }
+  app: {
+    setWindowMode: (mode: 'home' | 'settings') => Promise<void>
+    onOpenSettings: (listener: () => void) => () => void
+  }
   llm: {
     getSnapshot: () => Promise<LlmSnapshot>
+    setProvider: (providerId: LlmProviderId) => Promise<LlmSnapshot>
+    setBaseUrl: (providerId: OpenAiCompatibleProviderId, baseUrl: string) => Promise<LlmSnapshot>
     setModel: (modelId: string) => Promise<LlmSnapshot>
     addCustomModel: (modelId: string) => Promise<LlmSnapshot>
     removeCustomModel: (modelId: string) => Promise<LlmSnapshot>
-    setApiKey: (apiKey: string) => Promise<LlmSnapshot>
-    clearApiKey: () => Promise<LlmSnapshot>
+    setApiKey: (providerId: LlmProviderId, apiKey: string) => Promise<LlmSnapshot>
+    clearApiKey: (providerId: LlmProviderId) => Promise<LlmSnapshot>
     refreshModels: () => Promise<LlmSnapshot>
     openKeys: () => Promise<void>
     onSnapshotChange: (listener: (snapshot: LlmSnapshot) => void) => () => void

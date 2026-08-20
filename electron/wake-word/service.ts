@@ -105,6 +105,19 @@ export class WakeWordService {
     return this.#status
   }
 
+  beginExternalSession(): void {
+    this.#worker?.postMessage({ type: 'reset' })
+    this.#update({ phase: 'activated', captureRequested: true, latestScore: 0, error: null })
+  }
+
+  endExternalSession(): void {
+    if (!this.#status.enabled) {
+      this.#update({ phase: 'disabled', captureRequested: false, latestScore: 0 })
+      return
+    }
+    this.resumeListening()
+  }
+
   resumeListening(): void {
     this.options.onResume?.()
     if (!this.#status.enabled || !this.#worker) return

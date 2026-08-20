@@ -15,6 +15,15 @@ const SEEDS: Record<SoulFileId, string> = {
 }
 
 const USER_FIELD_KEYS = Object.keys(USER_FIELD_LABELS) as Array<keyof typeof USER_FIELD_LABELS>
+const LEGACY_USER_FIELD_LABELS: Record<keyof typeof USER_FIELD_LABELS, string> = {
+  name: 'نام',
+  addressForm: 'خطاب',
+  languageMix: 'زبان',
+  city: 'شهر',
+  work: 'کار',
+  focus: 'تمرکز',
+  replyLength: 'طول پاسخ'
+}
 
 export class SoulStore {
   #root: string
@@ -27,11 +36,15 @@ export class SoulStore {
     await mkdir(this.#root, { recursive: true })
     for (const id of Object.keys(SEEDS) as SoulFileId[]) {
       const path = this.#pathFor(id)
+      let current: string
       try {
-        await readFile(path, 'utf8')
+        current = await readFile(path, 'utf8')
       } catch {
         await this.#persist(path, SEEDS[id])
+        continue
       }
+      const migrated = migrateLegacyMarkdown(id, current)
+      if (migrated !== normalizeMarkdown(current)) await this.#persist(path, migrated)
     }
   }
 
@@ -73,7 +86,11 @@ export class SoulStore {
     const current = await this.read('user')
     const nextValue = formatUserFieldValue(key, value)
     const label = USER_FIELD_LABELS[key]
-    const pattern = new RegExp(`^- ${escapeRegExp(label)}:.*$`, 'm')
+    const legacyLabel = LEGACY_USER_FIELD_LABELS[key]
+    const pattern = new RegExp(
+      `^- (?:${escapeRegExp(label)}|${escapeRegExp(legacyLabel)}):.*$`,
+      'm'
+    )
     const line = `- ${label}: ${nextValue}`
     const next = pattern.test(current)
       ? current.replace(pattern, line)
@@ -99,14 +116,14 @@ export class SoulStore {
 
 export function formatUserMarkdown(draft: UserProfileDraft): string {
   const lines = [
-    '# کاربر',
+    '# User Profile',
     '',
-    `- ${USER_FIELD_LABELS.name}: ${draft.name.trim() || 'نامشخص'}`,
+    `- ${USER_FIELD_LABELS.name}: ${draft.name.trim() || 'Unknown'}`,
     `- ${USER_FIELD_LABELS.addressForm}: ${formatAddressForm(draft.addressForm)}`,
     `- ${USER_FIELD_LABELS.languageMix}: ${formatLanguageMix(draft.languageMix)}`,
-    `- ${USER_FIELD_LABELS.city}: ${draft.city.trim() || 'نامشخص'}`,
-    `- ${USER_FIELD_LABELS.work}: ${draft.work.trim() || 'نامشخص'}`,
-    `- ${USER_FIELD_LABELS.focus}: ${draft.focus.trim() || 'نامشخص'}`,
+    `- ${USER_FIELD_LABELS.city}: ${draft.city.trim() || 'Unknown'}`,
+    `- ${USER_FIELD_LABELS.work}: ${draft.work.trim() || 'Unknown'}`,
+    `- ${USER_FIELD_LABELS.focus}: ${draft.focus.trim() || 'Unknown'}`,
     `- ${USER_FIELD_LABELS.replyLength}: ${formatReplyLength(draft.replyLength)}`,
     ''
   ]
@@ -124,26 +141,68 @@ function formatUserFieldValue(field: keyof typeof USER_FIELD_LABELS, value: stri
   if (field === 'replyLength') {
     return formatReplyLength(trimmed === 'medium' || trimmed === 'متوسط' ? 'medium' : 'short')
   }
-  return trimmed || 'نامشخص'
+  return trimmed || 'Unknown'
 }
 
 function formatAddressForm(value: UserProfileDraft['addressForm']): string {
-  return value === 'shoma' ? 'شما (رسمی)' : 'تو (خودمانی)'
+  return value === 'shoma' ? 'formal shoma' : 'informal to'
 }
 
 function formatLanguageMix(value: UserProfileDraft['languageMix']): string {
-  return value === 'persian' ? 'فقط فارسی' : 'فارسی با اصطلاحات انگلیسی وقتی لازم است'
+  return value === 'persian' ? 'Persian only' : 'Persian with English terms when useful'
 }
 
 function formatReplyLength(value: UserProfileDraft['replyLength']): string {
-  return value === 'medium' ? 'کمی مفصل‌تر' : 'خیلی کوتاه'
+  return value === 'medium' ? 'a little more detailed' : 'very short'
 }
 
 function formatMemoryStamp(date: Date): string {
-  return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
     month: 'short',
     day: 'numeric'
   }).format(date)
+}
+
+function migrateLegacyMarkdown(id: SoulFileId, content: string): string {
+  let next = normalizeMarkdown(content)
+  if (id === 'user') {
+    if (next === normalizeMarkdown('# کاربر\n\nهنوز چیزی از صاحب این دستگاه ثبت نشده.\n')) {
+      return normalizeMarkdown(DEFAULT_USER_MARKDOWN)
+    }
+    next = next.replace(/^# کاربر\s*$/m, '# User Profile')
+    for (const key of USER_FIELD_KEYS) {
+      const legacy = LEGACY_USER_FIELD_LABELS[key]
+      const label = USER_FIELD_LABELS[key]
+      next = next.replace(new RegExp(`^- ${escapeRegExp(legacy)}:`, 'm'), `- ${label}:`)
+    }
+    next = next
+      .replace(/:\s*نامشخص\s*$/gm, ': Unknown')
+      .replace(/:\s*شما \(رسمی\)\s*$/gm, ': formal shoma')
+      .replace(/:\s*تو \(خودمانی\)\s*$/gm, ': informal to')
+      .replace(/:\s*فقط فارسی\s*$/gm, ': Persian only')
+      .replace(
+        /:\s*فارسی با اصطلاحات انگلیسی وقتی لازم است\s*$/gm,
+        ': Persian with English terms when useful'
+      )
+      .replace(/:\s*کمی مفصل‌تر\s*$/gm, ': a little more detailed')
+      .replace(/:\s*خیلی کوتاه\s*$/gm, ': very short')
+  }
+  if (id === 'memory') {
+    if (
+      next ===
+      normalizeMarkdown('# حافظه\n\nحقایقی که میکی در طول گفتگو یاد گرفته، هر خط یک نکته پایدار.\n')
+    ) {
+      return normalizeMarkdown(DEFAULT_MEMORY_MARKDOWN)
+    }
+    next = next
+      .replace(/^# حافظه\s*$/m, '# Long-term Memory')
+      .replace(
+        /^حقایقی که میکی در طول گفتگو یاد گرفته، هر خط یک نکته پایدار\.\s*$/m,
+        'Durable facts Micky learns over time. Keep one stable fact per bullet.'
+      )
+  }
+  return normalizeMarkdown(next)
 }
 
 function normalizeMarkdown(content: string): string {

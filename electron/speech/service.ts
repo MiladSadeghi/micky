@@ -1,12 +1,14 @@
 import type { BrowserWindow } from 'electron'
 import {
   ASR_FINAL_HOLD_MS,
-  ASR_MAX_UTTERANCE_MS,
+  ASR_PENDING_AUDIO_LIMIT_MS,
   ASR_SAMPLE_RATE,
+  ASR_STALL_TIMEOUT_MS,
   INITIAL_SPEECH_STATUS,
   SPEECH_STATUS_CHANNEL,
   SPEECH_TRANSCRIPT_CHANNEL,
   type SpeechStatus,
+  type SpeechSessionMode,
   type SpeechTranscript
 } from '@/lib/asr'
 import type { ModelRegistry } from '../models/registry'
@@ -19,9 +21,9 @@ type SpeechServiceOptions = {
   settings: SettingsStore
   getWindow: () => BrowserWindow | null
   getPreroll: () => ArrayBuffer
-  onSessionEnd: () => void
-  onPartialTranscript?: (text: string) => void
-  onFinalTranscript?: (text: string) => void
+  onSessionEnd: (mode: SpeechSessionMode) => void
+  onPartialTranscript?: (text: string, mode: SpeechSessionMode) => void
+  onFinalTranscript?: (text: string, mode: SpeechSessionMode) => void
 }
 
 export class SpeechService {
@@ -35,6 +37,9 @@ export class SpeechService {
   #loadTask: Promise<void> | null = null
   #pending: ArrayBuffer[] = []
   #pendingSamples = 0
+  #sessionMode: SpeechSessionMode = 'conversation'
+  #stableSegments: string[] = []
+  #dictationSilenceTimer: NodeJS.Timeout | null = null
 
   constructor(private readonly options: SpeechServiceOptions) {
     this.#provider = new LocalShenavaProvider({
@@ -65,7 +70,8 @@ export class SpeechService {
     await this.#ensureLoaded(modelId)
   }
 
-  async startSession(options?: { preroll?: boolean }): Promise<void> {
+  async startSession(options?: { preroll?: boolean; mode?: SpeechSessionMode }): Promise<void> {
+    this.#sessionMode = options?.mode ?? 'conversation'
     const modelId = this.options.settings.get().activeModelId
     if (!this.options.models.isInstalled(modelId)) {
       this.#update({
@@ -75,12 +81,15 @@ export class SpeechService {
         error: 'اول مدل تشخیص گفتار را از تنظیمات دانلود کن.',
         transcript: null
       })
+      this.options.onSessionEnd(this.#sessionMode)
       return
     }
 
     this.#clearMaxTimer()
     this.#clearHoldTimer()
     this.#clearPending()
+    this.#clearDictationSilenceTimer()
+    this.#stableSegments = []
     this.#active = true
     this.#finalizing = false
     this.#sessionId += 1
@@ -90,7 +99,13 @@ export class SpeechService {
       phase: 'loading',
       modelId,
       error: null,
-      transcript: { sessionId, text: '', isFinal: false, updatedAt: Date.now() }
+      transcript: {
+        sessionId,
+        text: '',
+        isFinal: false,
+        updatedAt: Date.now(),
+        mode: this.#sessionMode
+      }
     })
 
     try {
@@ -100,7 +115,7 @@ export class SpeechService {
       if (preroll.byteLength > 0) this.#provider.acceptAudio(preroll)
       this.#flushPending()
       this.#update({ phase: 'listening', ready: true, error: null })
-      this.#maxTimer = setTimeout(() => this.finishSession(), ASR_MAX_UTTERANCE_MS)
+      this.#armStallTimer()
     } catch (error) {
       this.#active = false
       this.#clearPending()
@@ -109,7 +124,7 @@ export class SpeechService {
         ready: false,
         error: error instanceof Error ? error.message : 'بارگذاری مدل تشخیص گفتار ناموفق بود.'
       })
-      this.options.onSessionEnd()
+      this.options.onSessionEnd(this.#sessionMode)
     }
   }
 
@@ -137,6 +152,7 @@ export class SpeechService {
     this.#clearMaxTimer()
     this.#clearHoldTimer()
     this.#clearPending()
+    this.#clearDictationSilenceTimer()
     try {
       this.#provider.stopUtterance()
     } catch {
@@ -153,6 +169,7 @@ export class SpeechService {
     this.#clearMaxTimer()
     this.#clearHoldTimer()
     this.#clearPending()
+    this.#clearDictationSilenceTimer()
     this.#provider.dispose()
     this.#update({ phase: 'idle', ready: false, modelId: null, transcript: null, error: null })
   }
@@ -177,45 +194,69 @@ export class SpeechService {
 
   #onPartial(text: string): void {
     if (!this.#active) return
+    this.#armStallTimer()
+    this.#clearDictationSilenceTimer()
+    const combined = this.#combinedText(text)
     this.#emitTranscript({
       sessionId: String(this.#sessionId),
-      text,
+      text: combined,
       isFinal: false,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      mode: this.#sessionMode
     })
-    this.options.onPartialTranscript?.(text)
+    this.options.onPartialTranscript?.(combined, this.#sessionMode)
   }
 
   #onEndpoint(text: string): void {
     if (!this.#active || this.#finalizing) return
     if (!text.trim()) return
+    if (this.#sessionMode === 'dictation') {
+      this.#appendStable(text)
+      const combined = this.#combinedText('')
+      this.#emitTranscript({
+        sessionId: String(this.#sessionId),
+        text: combined,
+        isFinal: false,
+        updatedAt: Date.now(),
+        mode: this.#sessionMode
+      })
+      this.options.onPartialTranscript?.(combined, this.#sessionMode)
+      this.#provider.startUtterance()
+      this.#armDictationSilenceTimer()
+      return
+    }
     this.#emitTranscript({
       sessionId: String(this.#sessionId),
       text,
       isFinal: false,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      mode: this.#sessionMode
     })
-    this.options.onPartialTranscript?.(text)
+    this.options.onPartialTranscript?.(text, this.#sessionMode)
     this.finishSession()
   }
 
   #onFinal(text: string): void {
     if (!this.#finalizing && !this.#active) return
+    const mode = this.#sessionMode
+    const finalText = mode === 'dictation' ? this.#combinedText(text) : text
     const transcript: SpeechTranscript = {
       sessionId: String(this.#sessionId),
-      text,
+      text: finalText,
       isFinal: true,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      mode
     }
     this.#active = false
     this.#finalizing = false
     this.#clearMaxTimer()
+    this.#clearDictationSilenceTimer()
     this.#emitTranscript(transcript)
     this.#update({ phase: 'idle', transcript })
-    this.options.onFinalTranscript?.(text)
+    this.options.onFinalTranscript?.(finalText, mode)
     this.#holdTimer = setTimeout(() => {
       this.#holdTimer = null
-      this.options.onSessionEnd()
+      this.options.onSessionEnd(mode)
     }, ASR_FINAL_HOLD_MS)
   }
 
@@ -224,8 +265,9 @@ export class SpeechService {
     this.#finalizing = false
     this.#clearMaxTimer()
     this.#clearHoldTimer()
+    this.#clearDictationSilenceTimer()
     this.#update({ phase: 'error', ready: false, error })
-    this.options.onSessionEnd()
+    this.options.onSessionEnd(this.#sessionMode)
   }
 
   #emitTranscript(transcript: SpeechTranscript): void {
@@ -251,6 +293,39 @@ export class SpeechService {
     this.#maxTimer = null
   }
 
+  #armStallTimer(): void {
+    this.#clearMaxTimer()
+    this.#maxTimer = setTimeout(() => this.finishSession(), ASR_STALL_TIMEOUT_MS)
+  }
+
+  #armDictationSilenceTimer(): void {
+    this.#clearDictationSilenceTimer()
+    const endpointSilenceMs = this.options.settings.get().endpoint.rule2MinTrailingSilence * 1_000
+    this.#dictationSilenceTimer = setTimeout(
+      () => this.finishSession(),
+      Math.max(250, 3_000 - endpointSilenceMs)
+    )
+  }
+
+  #clearDictationSilenceTimer(): void {
+    if (!this.#dictationSilenceTimer) return
+    clearTimeout(this.#dictationSilenceTimer)
+    this.#dictationSilenceTimer = null
+  }
+
+  #appendStable(text: string): void {
+    const trimmed = text.trim()
+    if (!trimmed || this.#stableSegments.at(-1) === trimmed) return
+    this.#stableSegments.push(trimmed)
+  }
+
+  #combinedText(tail: string): string {
+    const parts = [...this.#stableSegments]
+    const trimmed = tail.trim()
+    if (trimmed && parts.at(-1) !== trimmed) parts.push(trimmed)
+    return parts.join(' ').trim()
+  }
+
   #clearHoldTimer(): void {
     if (!this.#holdTimer) return
     clearTimeout(this.#holdTimer)
@@ -259,7 +334,7 @@ export class SpeechService {
 
   #queueAudio(buffer: ArrayBuffer): void {
     const samples = buffer.byteLength / Float32Array.BYTES_PER_ELEMENT
-    const maxSamples = ASR_SAMPLE_RATE * (ASR_MAX_UTTERANCE_MS / 1_000)
+    const maxSamples = ASR_SAMPLE_RATE * (ASR_PENDING_AUDIO_LIMIT_MS / 1_000)
     if (this.#pendingSamples + samples > maxSamples) return
     this.#pending.push(buffer)
     this.#pendingSamples += samples

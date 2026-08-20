@@ -1,10 +1,10 @@
 export const AGENT_STATUS_CHANNEL = 'agent:status'
 export const AGENT_DELTA_CHANNEL = 'agent:delta'
 
-export const AGENT_MAX_STEPS = 8
+export const AGENT_MAX_STEPS = 12
 export const AGENT_HISTORY_LIMIT = 20
 
-export type AgentPhase = 'idle' | 'thinking' | 'tool' | 'speaking' | 'error'
+export type AgentPhase = 'idle' | 'thinking' | 'tool' | 'confirm' | 'speaking' | 'error'
 
 export type AgentTurn = {
   turnId: string
@@ -12,6 +12,8 @@ export type AgentTurn = {
   replyText: string
   phase: AgentPhase
   toolName: string | null
+  confirmText: string | null
+  confirmDetail: string | null
   error: string | null
 }
 
@@ -31,4 +33,54 @@ export const INITIAL_AGENT_STATUS: AgentStatus = {
   phase: 'idle',
   turn: null,
   error: null
+}
+
+const TOOL_STATUS_LABEL: Record<string, string> = {
+  remember: 'دارم می‌ذارم تو حافظه…',
+  recall: 'دارم حافظه رو می‌خونم…',
+  update_user_profile: 'دارم پروفایلت رو عوض می‌کنم…',
+  get_current_datetime: 'دارم نگاه می‌کنم ساعت چنده…',
+  end_conversation: 'دارم گفتگو رو می‌بندم…',
+  read_file: 'دارم فایل رو می‌خونم…',
+  write_file: 'دارم فایل رو آماده می‌کنم…',
+  list_directory: 'دارم پوشه رو نگاه می‌کنم…',
+  search_files: 'دارم دنبال فایل می‌گردم…',
+  search_in_files: 'دارم تو فایل‌ها می‌گردم…',
+  open_app: 'دارم یه برنامه رو باز می‌کنم…',
+  run_command: 'دارم یه دستور اجرا می‌کنم…',
+  look_at_screen: 'دارم صفحه رو نگاه می‌کنم…',
+  fetch_webpage: 'دارم صفحهٔ وب رو می‌خونم…',
+  edit_personal_context: 'دارم تنظیمات شخصی رو آماده می‌کنم…'
+}
+
+const TOOL_NAME_LABEL: Record<string, string> = {
+  remember: 'حافظه',
+  recall: 'یادآوری',
+  update_user_profile: 'پروفایل',
+  get_current_datetime: 'زمان و تاریخ',
+  end_conversation: 'گفتگو',
+  read_file: 'خواندن فایل',
+  write_file: 'نوشتن فایل',
+  list_directory: 'دیدن پوشه',
+  search_files: 'پیداکردن فایل',
+  search_in_files: 'جستجو در فایل‌ها',
+  open_app: 'بازکردن',
+  run_command: 'اجرای دستور',
+  look_at_screen: 'دیدن صفحه',
+  fetch_webpage: 'خواندن وب',
+  edit_personal_context: 'تنظیمات شخصی'
+}
+
+export function agentStatusLabel(phase: AgentPhase | string, toolName?: string | null): string {
+  if (phase === 'confirm') return 'بگو آره یا نه'
+  if (phase === 'tool') {
+    return (toolName && TOOL_STATUS_LABEL[toolName]) || 'یک لحظه…'
+  }
+  if (phase === 'error') return '…'
+  if (phase === 'speaking') return 'دارم جواب می‌دم…'
+  return 'دارم فکر می‌کنم…'
+}
+
+export function agentToolLabel(toolName?: string | null): string {
+  return (toolName && TOOL_NAME_LABEL[toolName]) || 'انجام کار'
 }

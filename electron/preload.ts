@@ -16,7 +16,24 @@ import {
 } from '@/lib/asr'
 import { CONVERSATION_STATUS_CHANNEL, type ConversationStatus } from '@/lib/conversation'
 import type { MickyAPI } from '@/lib/desktop-api'
-import { LLM_SNAPSHOT_CHANNEL, type LlmSnapshot } from '@/lib/llm'
+import {
+  LLM_SNAPSHOT_CHANNEL,
+  type LlmProviderId,
+  type LlmSnapshot,
+  type OpenAiCompatibleProviderId
+} from '@/lib/llm'
+import { SETTINGS_SNAPSHOT_CHANNEL, type SettingsSnapshot } from '@/lib/settings'
+import {
+  TTS_PLAYBACK_CHANNEL,
+  TTS_SNAPSHOT_CHANNEL,
+  TTS_STATUS_CHANNEL,
+  TTS_STOP_CHANNEL,
+  copyPlaybackAudio,
+  type TtsPlayback,
+  type TtsProviderId,
+  type TtsSnapshot,
+  type TtsStatus
+} from '@/lib/tts'
 import {
   SOUL_SNAPSHOT_CHANNEL,
   type SoulFileId,
@@ -54,8 +71,46 @@ const api: MickyAPI = {
     onTranscript: (listener: (transcript: SpeechTranscript) => void): (() => void) =>
       subscribe(SPEECH_TRANSCRIPT_CHANNEL, listener)
   },
+  tts: {
+    getStatus: (): Promise<TtsStatus> => ipcRenderer.invoke('tts:get-status'),
+    getSnapshot: (): Promise<TtsSnapshot> => ipcRenderer.invoke('tts:get-snapshot'),
+    setEnabled: (enabled: boolean): Promise<TtsSnapshot> =>
+      ipcRenderer.invoke('tts:set-enabled', enabled),
+    setProvider: (providerId: TtsProviderId): Promise<TtsSnapshot> =>
+      ipcRenderer.invoke('tts:set-provider', providerId),
+    setVoice: (providerId: TtsProviderId, voiceId: string): Promise<TtsSnapshot> =>
+      ipcRenderer.invoke('tts:set-voice', providerId, voiceId),
+    setApiKey: (providerId: TtsProviderId, apiKey: string): Promise<TtsSnapshot> =>
+      ipcRenderer.invoke('tts:set-api-key', providerId, apiKey),
+    clearApiKey: (providerId: TtsProviderId): Promise<TtsSnapshot> =>
+      ipcRenderer.invoke('tts:clear-api-key', providerId),
+    refreshVoices: (): Promise<TtsSnapshot> => ipcRenderer.invoke('tts:refresh-voices'),
+    preview: (): Promise<void> => ipcRenderer.invoke('tts:preview'),
+    openKeys: (providerId: TtsProviderId): Promise<void> =>
+      ipcRenderer.invoke('tts:open-keys', providerId),
+    playbackFinished: (id: string, error?: string): void =>
+      ipcRenderer.send('tts:playback-finished', id, error),
+    onStatusChange: (listener: (status: TtsStatus) => void): (() => void) =>
+      subscribe(TTS_STATUS_CHANNEL, listener),
+    onSnapshotChange: (listener: (snapshot: TtsSnapshot) => void): (() => void) =>
+      subscribe(TTS_SNAPSHOT_CHANNEL, listener),
+    onPlayback: (listener: (playback: TtsPlayback) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, playback: TtsPlayback): void => {
+        listener({
+          id: playback.id,
+          mimeType: playback.mimeType,
+          audio: copyPlaybackAudio(playback.audio)
+        })
+      }
+      ipcRenderer.on(TTS_PLAYBACK_CHANNEL, handler)
+      return () => ipcRenderer.removeListener(TTS_PLAYBACK_CHANNEL, handler)
+    },
+    onStop: (listener: (id: string) => void): (() => void) => subscribe(TTS_STOP_CHANNEL, listener)
+  },
   conversation: {
     getStatus: (): Promise<ConversationStatus> => ipcRenderer.invoke('conversation:get-status'),
+    resolveApproval: (approved: boolean): void =>
+      ipcRenderer.send('conversation:resolve-approval', approved),
     onStatusChange: (listener: (status: ConversationStatus) => void): (() => void) =>
       subscribe(CONVERSATION_STATUS_CHANNEL, listener)
   },
@@ -83,17 +138,43 @@ const api: MickyAPI = {
     onDelta: (listener: (delta: AgentDelta) => void): (() => void) =>
       subscribe(AGENT_DELTA_CHANNEL, listener)
   },
+  settings: {
+    getSnapshot: (): Promise<SettingsSnapshot> => ipcRenderer.invoke('settings:get-snapshot'),
+    setSystemToolsEnabled: (enabled: boolean): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-system-tools', enabled),
+    setShortcut: (kind, accelerator): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-shortcut', kind, accelerator),
+    setDictationAiCleanup: (enabled): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-dictation-cleanup', enabled),
+    setDictationAutoPaste: (enabled): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-dictation-auto-paste', enabled),
+    setLaunchAtLogin: (enabled): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-launch-at-login', enabled),
+    setVisionModel: (modelId): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-vision-model', modelId),
+    onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void): (() => void) =>
+      subscribe(SETTINGS_SNAPSHOT_CHANNEL, listener)
+  },
+  app: {
+    setWindowMode: (mode): Promise<void> => ipcRenderer.invoke('app:set-window-mode', mode),
+    onOpenSettings: (listener): (() => void) => subscribe('app:open-settings', listener)
+  },
   llm: {
     getSnapshot: (): Promise<LlmSnapshot> => ipcRenderer.invoke('llm:get-snapshot'),
+    setProvider: (providerId: LlmProviderId): Promise<LlmSnapshot> =>
+      ipcRenderer.invoke('llm:set-provider', providerId),
+    setBaseUrl: (providerId: OpenAiCompatibleProviderId, baseUrl: string): Promise<LlmSnapshot> =>
+      ipcRenderer.invoke('llm:set-base-url', providerId, baseUrl),
     setModel: (modelId: string): Promise<LlmSnapshot> =>
       ipcRenderer.invoke('llm:set-model', modelId),
     addCustomModel: (modelId: string): Promise<LlmSnapshot> =>
       ipcRenderer.invoke('llm:add-custom-model', modelId),
     removeCustomModel: (modelId: string): Promise<LlmSnapshot> =>
       ipcRenderer.invoke('llm:remove-custom-model', modelId),
-    setApiKey: (apiKey: string): Promise<LlmSnapshot> =>
-      ipcRenderer.invoke('llm:set-api-key', apiKey),
-    clearApiKey: (): Promise<LlmSnapshot> => ipcRenderer.invoke('llm:clear-api-key'),
+    setApiKey: (providerId: LlmProviderId, apiKey: string): Promise<LlmSnapshot> =>
+      ipcRenderer.invoke('llm:set-api-key', providerId, apiKey),
+    clearApiKey: (providerId: LlmProviderId): Promise<LlmSnapshot> =>
+      ipcRenderer.invoke('llm:clear-api-key', providerId),
     refreshModels: (): Promise<LlmSnapshot> => ipcRenderer.invoke('llm:refresh-models'),
     openKeys: (): Promise<void> => ipcRenderer.invoke('llm:open-keys'),
     onSnapshotChange: (listener: (snapshot: LlmSnapshot) => void): (() => void) =>

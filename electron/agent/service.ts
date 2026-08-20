@@ -14,13 +14,18 @@ import type { LlmService } from '../llm/service'
 import type { SettingsStore } from '../settings/store'
 import { buildSystemPrompt } from '../soul/prompt'
 import type { SoulStore } from '../soul/store'
+import type { ApprovalRequest } from '../system/exec'
 import { createAgentTools } from './tools'
+import { hasExplicitScreenIntent } from '../vision/intent'
 
 type AgentServiceOptions = {
   settings: SettingsStore
   llm: LlmService
   soul: SoulStore
   getWindow: () => BrowserWindow | null
+  onApprovalNeeded?: () => void
+  lookAtScreen?: (question: string, abortSignal?: AbortSignal) => Promise<string>
+  onStatusChange?: (status: AgentStatus) => void
 }
 
 export class AgentService {
@@ -28,6 +33,7 @@ export class AgentService {
   #history: ModelMessage[] = []
   #abort: AbortController | null = null
   #turnSeq = 0
+  #pendingApproval: ((approved: boolean) => void) | null = null
 
   constructor(private readonly options: AgentServiceOptions) {}
 
@@ -36,6 +42,7 @@ export class AgentService {
   }
 
   abort(): void {
+    this.resolveApproval(false)
     this.#abort?.abort()
     this.#abort = null
     if (this.#status.phase !== 'idle' && this.#status.phase !== 'error') {
@@ -51,7 +58,23 @@ export class AgentService {
     return this.#status
   }
 
-  async respond(userText: string): Promise<'completed' | 'aborted' | 'skipped'> {
+  resolveApproval(approved: boolean): void {
+    const pending = this.#pendingApproval
+    this.#pendingApproval = null
+    if (!pending) return
+    const turn = this.#status.turn
+    if (turn && turn.phase === 'confirm') {
+      this.#setTurn({
+        ...turn,
+        phase: 'tool',
+        confirmText: null,
+        confirmDetail: null
+      })
+    }
+    pending(approved)
+  }
+
+  async respond(userText: string): Promise<'completed' | 'ended' | 'aborted' | 'skipped'> {
     const text = userText.trim()
     if (!text) return 'skipped'
 
@@ -65,21 +88,40 @@ export class AgentService {
       replyText: '',
       phase: 'thinking',
       toolName: null,
+      confirmText: null,
+      confirmDetail: null,
       error: null
     }
     this.#setTurn(turn)
 
     if (!this.options.llm.isConfigured()) {
-      this.#fail(turn, 'برای جواب‌دادن، کلید OpenRouter و مدل زبانی را از تنظیمات کامل کن.')
+      this.#fail(turn, 'برای جواب‌دادن، سرویس و مدل زبانی را از تنظیمات کامل کن.')
       return 'skipped'
     }
 
     try {
       const files = await this.options.soul.readAll()
       const settings = this.options.settings.get()
-      const tools = createAgentTools(this.options.soul)
+      let endRequested = false
+      let screenCaptureConsumed = false
+      const screenCaptureAllowed = hasExplicitScreenIntent(text)
+      const tools = createAgentTools(this.options.soul, {
+        systemToolsEnabled: settings.systemToolsEnabled !== false,
+        abortSignal: abort.signal,
+        onEndConversation: () => {
+          endRequested = true
+        },
+        requestApproval: (request) => this.#requestApproval(turnId, turn, request, abort.signal),
+        screenCaptureAllowed,
+        lookAtScreen: async (question) => {
+          if (!screenCaptureAllowed) return 'درخواست صریحی برای دیدن صفحه وجود ندارد.'
+          if (screenCaptureConsumed) return 'در هر نوبت فقط یک بار می‌توانم صفحه را ببینم.'
+          screenCaptureConsumed = true
+          return this.options.lookAtScreen?.(question, abort.signal) ?? 'دیدن صفحه در دسترس نیست.'
+        }
+      })
       const agent = new ToolLoopAgent({
-        model: this.options.llm.getProvider().getModel(settings.llm.modelId),
+        model: this.options.llm.getModel(),
         instructions: buildSystemPrompt(files),
         tools,
         temperature: settings.llm.temperature,
@@ -95,7 +137,9 @@ export class AgentService {
           this.#setTurn({
             ...this.#currentTurn(turnId, turn),
             phase: 'tool',
-            toolName: toolCall.toolName
+            toolName: toolCall.toolName,
+            confirmText: null,
+            confirmDetail: null
           })
         }
       })
@@ -109,6 +153,8 @@ export class AgentService {
           ...this.#currentTurn(turnId, turn),
           phase: 'speaking',
           toolName: null,
+          confirmText: null,
+          confirmDetail: null,
           replyText: reply
         })
         this.#emitDelta({ turnId, delta, text: reply })
@@ -117,16 +163,22 @@ export class AgentService {
       if (abort.signal.aborted) return 'aborted'
 
       const responseMessages = await result.responseMessages
-      this.#history = trimHistory([...this.#history, userMessage, ...responseMessages])
+      if (endRequested) {
+        this.#history = []
+      } else {
+        this.#history = trimHistory([...this.#history, userMessage, ...responseMessages])
+      }
       this.#setTurn({
         ...this.#currentTurn(turnId, turn),
         phase: 'idle',
         toolName: null,
+        confirmText: null,
+        confirmDetail: null,
         replyText: reply,
         error: null
       })
       this.#update({ phase: 'idle', error: null })
-      return 'completed'
+      return endRequested ? 'ended' : 'completed'
     } catch (error) {
       if (abort.signal.aborted) return 'aborted'
       const message =
@@ -134,8 +186,36 @@ export class AgentService {
       this.#fail(this.#currentTurn(turnId, turn), message)
       return 'skipped'
     } finally {
+      this.resolveApproval(false)
       if (this.#abort === abort) this.#abort = null
     }
+  }
+
+  #requestApproval(
+    turnId: string,
+    fallback: AgentTurn,
+    request: ApprovalRequest,
+    abortSignal: AbortSignal
+  ): Promise<boolean> {
+    if (abortSignal.aborted) return Promise.resolve(false)
+    this.resolveApproval(false)
+    return new Promise((resolve) => {
+      this.#pendingApproval = resolve
+      this.#setTurn({
+        ...this.#currentTurn(turnId, fallback),
+        phase: 'confirm',
+        toolName: request.toolName ?? 'run_command',
+        confirmText: request.purpose,
+        confirmDetail: request.detail ?? request.command,
+        error: null
+      })
+      this.options.onApprovalNeeded?.()
+      const onAbort = (): void => {
+        abortSignal.removeEventListener('abort', onAbort)
+        this.resolveApproval(false)
+      }
+      abortSignal.addEventListener('abort', onAbort, { once: true })
+    })
   }
 
   #currentTurn(turnId: string, fallback: AgentTurn): AgentTurn {
@@ -152,7 +232,14 @@ export class AgentService {
   }
 
   #fail(turn: AgentTurn, error: string): void {
-    this.#setTurn({ ...turn, phase: 'error', error, toolName: null })
+    this.#setTurn({
+      ...turn,
+      phase: 'error',
+      error,
+      toolName: null,
+      confirmText: null,
+      confirmDetail: null
+    })
     this.#update({ phase: 'error', error })
   }
 
@@ -162,6 +249,7 @@ export class AgentService {
   }
 
   #emitStatus(): void {
+    this.options.onStatusChange?.(this.#status)
     const window = this.options.getWindow()
     if (window && !window.isDestroyed()) {
       window.webContents.send(AGENT_STATUS_CHANNEL, this.#status)

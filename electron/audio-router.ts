@@ -48,15 +48,18 @@ export class AudioRouter {
 
   process(buffer: ArrayBuffer): void {
     this.#preroll.append(new Float32Array(buffer))
+    const speech = this.getSpeech()
+    if (speech?.isSessionActive()) {
+      speech.processAudio(buffer)
+      return
+    }
     const wakeWord = this.getWakeWord()
     const phase = wakeWord?.getStatus().phase
     if (phase === 'listening' && wakeWord) {
       wakeWord.processAudio(buffer)
       return
     }
-    if (phase === 'activated') {
-      this.getSpeech()?.processAudio(buffer)
-    }
+    if (phase === 'activated') speech?.processAudio(buffer)
   }
 
   takePreroll(): ArrayBuffer {

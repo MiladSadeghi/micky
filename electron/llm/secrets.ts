@@ -1,12 +1,15 @@
 import { readFile, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import type { LlmProviderId } from '@/lib/llm'
 
 const require = createRequire(import.meta.url)
 
 const LEGACY_SECRETS_FILE_NAME = 'secrets.json'
 const KEYCHAIN_SERVICE = 'dev.micky.app'
-const KEYCHAIN_ACCOUNT = 'openrouter'
+type SecretAccount =
+  'openrouter' | 'custom-llm' | 'ollama-llm' | 'lmstudio-llm' | 'gemini-tts' | 'elevenlabs-tts'
+type TtsSecretProvider = 'gemini' | 'elevenlabs'
 
 export const KEYCHAIN_UNAVAILABLE_ERROR =
   'کی‌چین سیستم در دسترس نیست. روی لینوکس GNOME Keyring یا KWallet لازم است.'
@@ -34,7 +37,14 @@ type SecretStoreOptions = {
 export class SecretStore {
   #legacyPath: string
   #backend: KeychainBackend | null
-  #apiKey: string | null = null
+  #keys: Record<SecretAccount, string | null> = {
+    openrouter: null,
+    'custom-llm': null,
+    'ollama-llm': null,
+    'lmstudio-llm': null,
+    'gemini-tts': null,
+    'elevenlabs-tts': null
+  }
   #keychainAvailable = false
 
   constructor(userDataPath: string, options: SecretStoreOptions = {}) {
@@ -46,19 +56,29 @@ export class SecretStore {
     return this.#keychainAvailable
   }
 
-  getApiKey(): string | null {
-    return this.#apiKey
+  getApiKey(provider: LlmProviderId = 'openrouter'): string | null {
+    return this.#keys[llmAccount(provider)]
   }
 
-  hasApiKey(): boolean {
-    return Boolean(this.#apiKey)
+  hasApiKey(provider: LlmProviderId = 'openrouter'): boolean {
+    return Boolean(this.getApiKey(provider))
+  }
+
+  getTtsApiKey(provider: TtsSecretProvider): string | null {
+    return this.#keys[ttsAccount(provider)]
+  }
+
+  hasTtsApiKey(provider: TtsSecretProvider): boolean {
+    return Boolean(this.getTtsApiKey(provider))
   }
 
   async load(): Promise<void> {
     this.#keychainAvailable = probeKeychain(this.#backend)
-    this.#apiKey = this.#keychainAvailable ? this.#readKeychain() : null
+    if (this.#keychainAvailable) {
+      for (const account of secretAccounts()) this.#keys[account] = this.#readKeychain(account)
+    }
 
-    if (this.#apiKey) {
+    if (this.#keys.openrouter) {
       await this.#deleteLegacyFile()
       return
     }
@@ -66,39 +86,65 @@ export class SecretStore {
     const legacy = await this.#readLegacyFile()
     if (!legacy) return
 
-    this.#apiKey = legacy
+    this.#keys.openrouter = legacy
     if (!this.#keychainAvailable || !this.#backend) return
 
-    this.#backend.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, legacy)
+    this.#backend.setPassword(KEYCHAIN_SERVICE, 'openrouter', legacy)
     await this.#deleteLegacyFile()
   }
 
-  async setApiKey(value: string): Promise<void> {
+  async setApiKey(value: string): Promise<void>
+  async setApiKey(provider: LlmProviderId, value: string): Promise<void>
+  async setApiKey(providerOrValue: LlmProviderId | string, maybeValue?: string): Promise<void> {
+    const provider = maybeValue === undefined ? 'openrouter' : (providerOrValue as LlmProviderId)
+    const value = maybeValue === undefined ? providerOrValue : maybeValue
+    const account = llmAccount(provider)
     const trimmed = value.trim()
     if (!trimmed) {
-      await this.clearApiKey()
+      await this.clearApiKey(provider)
       return
     }
     if (!this.#backend || !this.#keychainAvailable) {
       throw new Error(KEYCHAIN_UNAVAILABLE_ERROR)
     }
-    this.#backend.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, trimmed)
-    this.#apiKey = trimmed
-    await this.#deleteLegacyFile()
+    this.#backend.setPassword(KEYCHAIN_SERVICE, account, trimmed)
+    this.#keys[account] = trimmed
+    if (provider === 'openrouter') await this.#deleteLegacyFile()
   }
 
-  async clearApiKey(): Promise<void> {
-    this.#apiKey = null
+  async clearApiKey(provider: LlmProviderId = 'openrouter'): Promise<void> {
+    const account = llmAccount(provider)
+    this.#keys[account] = null
     if (this.#backend && this.#keychainAvailable) {
-      this.#backend.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+      this.#backend.deletePassword(KEYCHAIN_SERVICE, account)
     }
-    await this.#deleteLegacyFile()
+    if (provider === 'openrouter') await this.#deleteLegacyFile()
   }
 
-  #readKeychain(): string | null {
+  async setTtsApiKey(provider: TtsSecretProvider, value: string): Promise<void> {
+    const account = ttsAccount(provider)
+    const trimmed = value.trim()
+    if (!trimmed) {
+      await this.clearTtsApiKey(provider)
+      return
+    }
+    if (!this.#backend || !this.#keychainAvailable) throw new Error(KEYCHAIN_UNAVAILABLE_ERROR)
+    this.#backend.setPassword(KEYCHAIN_SERVICE, account, trimmed)
+    this.#keys[account] = trimmed
+  }
+
+  async clearTtsApiKey(provider: TtsSecretProvider): Promise<void> {
+    const account = ttsAccount(provider)
+    this.#keys[account] = null
+    if (this.#backend && this.#keychainAvailable) {
+      this.#backend.deletePassword(KEYCHAIN_SERVICE, account)
+    }
+  }
+
+  #readKeychain(account: SecretAccount): string | null {
     if (!this.#backend) return null
     try {
-      const value = this.#backend.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+      const value = this.#backend.getPassword(KEYCHAIN_SERVICE, account)
       return value?.trim() ? value : null
     } catch {
       return null
@@ -146,11 +192,24 @@ function createOsKeychain(): KeychainBackend | null {
 function probeKeychain(backend: KeychainBackend | null): boolean {
   if (!backend) return false
   try {
-    backend.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+    backend.getPassword(KEYCHAIN_SERVICE, 'openrouter')
     return true
   } catch {
     return false
   }
+}
+
+function secretAccounts(): SecretAccount[] {
+  return ['openrouter', 'custom-llm', 'ollama-llm', 'lmstudio-llm', 'gemini-tts', 'elevenlabs-tts']
+}
+
+function llmAccount(provider: LlmProviderId): SecretAccount {
+  if (provider === 'openrouter') return 'openrouter'
+  return `${provider}-llm`
+}
+
+function ttsAccount(provider: TtsSecretProvider): SecretAccount {
+  return provider === 'gemini' ? 'gemini-tts' : 'elevenlabs-tts'
 }
 
 function decodeLegacySecret(record: SecretRecord | undefined): string | null {

@@ -44,6 +44,42 @@ test('clears the keychain entry', async () => {
   assert.equal(backend.getPassword('dev.micky.app', 'openrouter'), null)
 })
 
+test('stores independent Gemini and ElevenLabs TTS keys', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'micky-secrets-'))
+  const backend = memoryKeychain()
+  const store = new SecretStore(dir, { backend })
+  await store.load()
+
+  await store.setTtsApiKey('gemini', 'gemini-key')
+  await store.setTtsApiKey('elevenlabs', 'eleven-key')
+
+  assert.equal(store.getTtsApiKey('gemini'), 'gemini-key')
+  assert.equal(store.getTtsApiKey('elevenlabs'), 'eleven-key')
+  assert.equal(backend.getPassword('dev.micky.app', 'gemini-tts'), 'gemini-key')
+  assert.equal(backend.getPassword('dev.micky.app', 'elevenlabs-tts'), 'eleven-key')
+
+  await store.clearTtsApiKey('gemini')
+  assert.equal(store.hasTtsApiKey('gemini'), false)
+  assert.equal(store.hasTtsApiKey('elevenlabs'), true)
+})
+
+test('stores independent keys for OpenRouter and compatible LLM providers', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'micky-secrets-'))
+  const backend = memoryKeychain()
+  const store = new SecretStore(dir, { backend })
+  await store.load()
+
+  await store.setApiKey('openrouter', 'openrouter-key')
+  await store.setApiKey('custom', 'custom-key')
+  await store.setApiKey('lmstudio', 'studio-key')
+
+  assert.equal(store.getApiKey('openrouter'), 'openrouter-key')
+  assert.equal(store.getApiKey('custom'), 'custom-key')
+  assert.equal(store.getApiKey('lmstudio'), 'studio-key')
+  assert.equal(backend.getPassword('dev.micky.app', 'custom-llm'), 'custom-key')
+  assert.equal(backend.getPassword('dev.micky.app', 'lmstudio-llm'), 'studio-key')
+})
+
 test('migrates a plaintext secrets.json file into the keychain and deletes it', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'micky-secrets-'))
   const secretsPath = join(dir, 'secrets.json')

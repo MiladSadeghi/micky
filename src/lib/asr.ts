@@ -2,7 +2,13 @@ export const ASR_SAMPLE_RATE = 16_000
 export const ASR_FEATURE_DIM = 80
 export const ASR_PREROLL_MS = 250
 export const ASR_PREROLL_SAMPLES = Math.round(ASR_SAMPLE_RATE * (ASR_PREROLL_MS / 1_000))
-export const ASR_MAX_UTTERANCE_MS = 20_000
+// End a stalled recognizer session, not a healthy long dictation. The timer is
+// refreshed whenever the recognizer produces new partial text.
+export const ASR_STALL_TIMEOUT_MS = 45_000
+export const ASR_PENDING_AUDIO_LIMIT_MS = 30_000
+// Sherpa's rule 3 is a hard utterance-length endpoint. Keep it out of the way
+// and let the trailing-silence rules decide when a person has finished.
+export const ASR_RULE3_UTTERANCE_LIMIT_SECONDS = 60 * 60
 export const ASR_FINAL_HOLD_MS = 900
 export const ASR_PROGRESS_BROADCAST_INTERVAL_MS = 240
 export const ASR_NUM_THREADS = 2
@@ -13,12 +19,14 @@ export const SPEECH_TRANSCRIPT_CHANNEL = 'speech:transcript'
 export const MODELS_STATUS_CHANNEL = 'models:status'
 
 export type SpeechPhase = 'idle' | 'loading' | 'listening' | 'finalizing' | 'error'
+export type SpeechSessionMode = 'conversation' | 'dictation'
 
 export type SpeechTranscript = {
   sessionId: string
   text: string
   isFinal: boolean
   updatedAt: number
+  mode?: SpeechSessionMode
 }
 
 export type SpeechStatus = {
@@ -66,7 +74,7 @@ export type EndpointSettings = {
 export const DEFAULT_ENDPOINT_SETTINGS: EndpointSettings = {
   rule1MinTrailingSilence: 2.4,
   rule2MinTrailingSilence: 0.8,
-  rule3MinUtteranceLength: 20
+  rule3MinUtteranceLength: ASR_RULE3_UTTERANCE_LIMIT_SECONDS
 }
 
 export type AsrProcessRequest =

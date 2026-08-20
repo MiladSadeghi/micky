@@ -10,22 +10,22 @@ Do not give advice unless they ask.
 You grow with them. Remember what matters to them.
 `
 
-export const DEFAULT_USER_MARKDOWN = `# کاربر
+export const DEFAULT_USER_MARKDOWN = `# User Profile
 
-هنوز چیزی از صاحب این دستگاه ثبت نشده.
+No profile details have been saved yet.
 `
 
-export const DEFAULT_MEMORY_MARKDOWN = `# حافظه
+export const DEFAULT_MEMORY_MARKDOWN = `# Long-term Memory
 
-حقایقی که میکی در طول گفتگو یاد گرفته، هر خط یک نکته پایدار.
+Durable facts Micky learns over time. Keep one stable fact per bullet.
 `
 
 export const USER_FIELD_LABELS = {
-  name: 'نام',
-  addressForm: 'خطاب',
-  languageMix: 'زبان',
-  city: 'شهر',
-  work: 'کار',
-  focus: 'تمرکز',
-  replyLength: 'طول پاسخ'
+  name: 'Name',
+  addressForm: 'Address form',
+  languageMix: 'Language',
+  city: 'City',
+  work: 'Work',
+  focus: 'Current focus',
+  replyLength: 'Reply length'
 } as const

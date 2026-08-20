@@ -1,9 +1,29 @@
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import type { SoulStore } from '../soul/store'
+import { openUserTarget, runUserCommand, type ApprovalRequest } from '../system/exec'
+import {
+  listUserDirectory,
+  MAX_WRITE_BYTES,
+  readUserFile,
+  searchInUserFiles,
+  searchUserFiles,
+  writeUserFile
+} from '../system/fs-tools'
+import { PathDeniedError, resolveSafePath } from '../system/paths'
+import { fetchCleanWebpage } from '../system/web-fetch'
 
-export function createAgentTools(soul: SoulStore): ToolSet {
-  return {
+export type AgentToolHooks = {
+  onEndConversation?: () => void
+  systemToolsEnabled?: boolean
+  requestApproval?: (request: ApprovalRequest) => Promise<boolean>
+  abortSignal?: AbortSignal
+  screenCaptureAllowed?: boolean
+  lookAtScreen?: (question: string) => Promise<string>
+}
+
+export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): ToolSet {
+  const tools: ToolSet = {
     remember: tool({
       description:
         'Save a durable fact about the user or their world into long-term memory. Use for preferences, people, routines, and things they asked you to remember.',
@@ -50,6 +70,37 @@ export function createAgentTools(soul: SoulStore): ToolSet {
         return { updated: field }
       }
     }),
+    edit_personal_context: tool({
+      description:
+        "Replace one of Micky's private Markdown context files. Use only when the user explicitly asks to edit Micky's personality, profile document, or memory document. Preserve unrelated information. Prefer remember and update_user_profile for ordinary facts.",
+      inputSchema: z.object({
+        file: z.enum(['soul', 'user', 'memory']).describe('The context document to replace'),
+        content: z
+          .string()
+          .min(1)
+          .max(20_000)
+          .describe('The complete replacement Markdown in English'),
+        purpose: z
+          .string()
+          .min(1)
+          .max(160)
+          .describe('One short Persian sentence explaining the change to the user')
+      }),
+      execute: async ({ file, content, purpose }) => {
+        if (!hooks.requestApproval) {
+          return { updated: false, message: 'ویرایش تنظیمات شخصی در این جلسه در دسترس نیست.' }
+        }
+        const approved = await hooks.requestApproval({
+          purpose,
+          command: `${file.toUpperCase()}.md`,
+          toolName: 'edit_personal_context',
+          detail: `${file.toUpperCase()}.md`
+        })
+        if (!approved) return { updated: false, approved: false, message: 'کاربر اجازه نداد.' }
+        await soul.write(file, content)
+        return { updated: true, file: `${file.toUpperCase()}.md` }
+      }
+    }),
     get_current_datetime: tool({
       description: 'Get the current local date and time, including the Jalali calendar.',
       inputSchema: z.object({}),
@@ -67,7 +118,200 @@ export function createAgentTools(soul: SoulStore): ToolSet {
           iso: now.toISOString()
         }
       }
+    }),
+    end_conversation: tool({
+      description:
+        'End this conversation and stop listening for a follow-up. Use only when the user is clearly wrapping up the whole chat, such as goodbye, I am done, that is all, or see you later. Do not use for thanks or okay if they might continue.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        hooks.onEndConversation?.()
+        return { ended: true }
+      }
     })
+  }
+
+  if (!hooks.systemToolsEnabled) return tools
+
+  tools.look_at_screen = tool({
+    description:
+      'Look at the active display and explain what is visible. Use when the current user directly asks what you see, asks you to look at something visible now, or asks about their screen.',
+    inputSchema: z.object({
+      question: z.string().max(500).describe('What the user wants understood from the screen')
+    }),
+    execute: async ({ question }) => {
+      if (!hooks.screenCaptureAllowed) {
+        return {
+          observed: false,
+          message: 'از کاربر بخواه صریح بگوید به صفحه نگاه کن یا صفحه را توضیح بده.'
+        }
+      }
+      if (!hooks.lookAtScreen) return { observed: false, message: 'دیدن صفحه در دسترس نیست.' }
+      return { observed: true, observations: await hooks.lookAtScreen(question) }
+    }
+  })
+
+  tools.fetch_webpage = tool({
+    description:
+      'Fetch a public web page and return its clean readable text plus title and source metadata. Use for a URL the user gives you and for facts that may have changed. This tool performs only an anonymous GET: it cannot access logins, local network pages, downloads, or private addresses.',
+    inputSchema: z.object({
+      url: z.string().min(1).max(2_000).describe('A complete public http(s) URL')
+    }),
+    execute: async ({ url }) =>
+      guardAction(
+        async () => fetchCleanWebpage(url, { abortSignal: hooks.abortSignal }),
+        'دریافت صفحه ناموفق بود.'
+      )
+  })
+
+  tools.read_file = tool({
+    description:
+      'Read a UTF-8 text file on this computer. Use for notes, configs, documents, CSV, Markdown, and source code in approved user locations. Never read secrets such as keys, browser data, shell history, or .env files.',
+    inputSchema: z.object({
+      path: z.string().min(1).max(500).describe('Absolute path or ~/path')
+    }),
+    execute: async ({ path }) =>
+      guardPath(async () => {
+        const result = await readUserFile(path)
+        return { path: result.path, content: result.content, truncated: result.truncated }
+      })
+  })
+
+  tools.write_file = tool({
+    description:
+      'Create, replace, or append to a UTF-8 text file such as TXT, Markdown, CSV, JSON, or source code. Use only when the user asks you to save or change a file. Read an existing file before overwriting it, preserve unrelated content, and prefer create for new files. Protected paths and binary files are blocked. Every write requires user approval.',
+    inputSchema: z.object({
+      path: z.string().min(1).max(500).describe('Absolute path or ~/path for the destination file'),
+      content: z
+        .string()
+        .refine((value) => !value.includes('\0'), {
+          message: 'Content must be plain UTF-8 text without null bytes.'
+        })
+        .refine((value) => Buffer.byteLength(value, 'utf8') <= MAX_WRITE_BYTES, {
+          message: 'Content must be no larger than 512 KB as UTF-8.'
+        })
+        .describe('The exact UTF-8 text to write, up to 512 KB'),
+      mode: z
+        .enum(['create', 'overwrite', 'append'])
+        .describe('create refuses an existing file; overwrite replaces it; append adds to it'),
+      purpose: z
+        .string()
+        .min(1)
+        .max(160)
+        .describe('One short Persian sentence explaining the file change to the user')
+    }),
+    execute: async ({ path, content, mode, purpose }) =>
+      guardAction(async () => {
+        if (!hooks.requestApproval) {
+          return { written: false, message: 'نوشتن فایل در این جلسه در دسترس نیست.' }
+        }
+        const resolvedPath = await resolveSafePath(path)
+        const approved = await hooks.requestApproval({
+          purpose,
+          command: resolvedPath,
+          toolName: 'write_file',
+          detail: `${mode}: ${resolvedPath}`
+        })
+        if (!approved) return { written: false, approved: false, message: 'کاربر اجازه نداد.' }
+        const result = await writeUserFile(resolvedPath, content, mode)
+        return { written: true, ...result }
+      }, 'نوشتن فایل ناموفق بود.')
+  })
+
+  tools.list_directory = tool({
+    description: 'List files and folders in an approved directory on this computer.',
+    inputSchema: z.object({
+      path: z.string().min(1).max(500).describe('Directory path, absolute or ~/path')
+    }),
+    execute: async ({ path }) =>
+      guardPath(async () => {
+        const result = await listUserDirectory(path)
+        return { path: result.path, entries: result.entries, truncated: result.truncated }
+      })
+  })
+
+  tools.search_files = tool({
+    description:
+      'Find files and folders by name. Prefer a narrow directory. Skips .git, node_modules, and Library when searching from home.',
+    inputSchema: z.object({
+      query: z.string().min(1).max(120).describe('Substring of the file or folder name'),
+      directory: z
+        .string()
+        .max(500)
+        .optional()
+        .describe('Directory to search; defaults to the user home')
+    }),
+    execute: async ({ query, directory }) =>
+      guardPath(async () => {
+        const result = await searchUserFiles(query, directory?.trim() || '~')
+        return { directory: result.directory, matches: result.matches, truncated: result.truncated }
+      })
+  })
+
+  tools.search_in_files = tool({
+    description: 'Search the contents of text files for a literal string.',
+    inputSchema: z.object({
+      query: z.string().min(1).max(120).describe('Literal text to find'),
+      directory: z
+        .string()
+        .max(500)
+        .optional()
+        .describe('Directory to search; defaults to the user home')
+    }),
+    execute: async ({ query, directory }) =>
+      guardPath(async () => {
+        const result = await searchInUserFiles(query, directory?.trim() || '~')
+        return { directory: result.directory, hits: result.hits, truncated: result.truncated }
+      })
+  })
+
+  tools.open_app = tool({
+    description:
+      'Open an app, file, or web URL using the operating system. Pass an app name, a file path, or an https URL. Do not pass shell flags or commands.',
+    inputSchema: z.object({
+      target: z.string().min(1).max(300).describe('App name, file path, or http(s) URL')
+    }),
+    execute: async ({ target }) => openUserTarget(target)
+  })
+
+  tools.run_command = tool({
+    description:
+      'Run a terminal command on this computer. Prefer the dedicated file, web, search, and open tools when they fit. Safe read-only commands run immediately. Anything that writes, deletes, installs, or uses the network needs the user to say yes. Never use sudo. Fill purpose with one short spoken Persian sentence describing what you are about to do, without the raw command.',
+    inputSchema: z.object({
+      command: z.string().min(1).max(1_000).describe('The exact command to run'),
+      purpose: z
+        .string()
+        .min(1)
+        .max(160)
+        .describe('One short Persian sentence for the user, not the command itself')
+    }),
+    execute: async ({ command, purpose }) => {
+      if (!hooks.requestApproval) {
+        return { ran: false, message: 'اجرای دستور در این جلسه در دسترس نیست.' }
+      }
+      return runUserCommand(command, purpose, {
+        requestApproval: hooks.requestApproval,
+        abortSignal: hooks.abortSignal
+      })
+    }
+  })
+
+  return tools
+}
+
+async function guardPath<T>(run: () => Promise<T>): Promise<T | { error: string }> {
+  return guardAction(run, 'خواندن فایل ناموفق بود.')
+}
+
+async function guardAction<T>(
+  run: () => Promise<T>,
+  fallback: string
+): Promise<T | { error: string }> {
+  try {
+    return await run()
+  } catch (error) {
+    if (error instanceof PathDeniedError) return { error: error.message }
+    const message = error instanceof Error && error.message.trim() ? error.message : fallback
+    return { error: message }
   }
 }
 
