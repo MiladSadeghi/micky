@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { isStepCount, ToolLoopAgent, type ModelMessage } from 'ai'
+import type { ChatContextMessage } from '@/lib/chats'
 import {
   AGENT_DELTA_CHANNEL,
   AGENT_HISTORY_LIMIT,
@@ -17,11 +18,13 @@ import type { SoulStore } from '../soul/store'
 import type { ApprovalRequest } from '../system/exec'
 import { createAgentTools } from './tools'
 import { hasExplicitScreenIntent } from '../vision/intent'
+import type { ChatStore } from '../chats/store'
 
 type AgentServiceOptions = {
   settings: SettingsStore
   llm: LlmService
   soul: SoulStore
+  chats?: ChatStore
   getWindow: () => BrowserWindow | null
   onApprovalNeeded?: () => void
   lookAtScreen?: (question: string, abortSignal?: AbortSignal) => Promise<string>
@@ -53,6 +56,14 @@ export class AgentService {
   reset(): AgentStatus {
     this.abort()
     this.#history = []
+    this.#status = { ...INITIAL_AGENT_STATUS }
+    this.#emitStatus()
+    return this.#status
+  }
+
+  replaceHistory(messages: ChatContextMessage[]): AgentStatus {
+    this.abort()
+    this.#history = messages.map(({ role, content }) => ({ role, content }))
     this.#status = { ...INITIAL_AGENT_STATUS }
     this.#emitStatus()
     return this.#status
@@ -106,6 +117,7 @@ export class AgentService {
       let screenCaptureConsumed = false
       const screenCaptureAllowed = hasExplicitScreenIntent(text)
       const tools = createAgentTools(this.options.soul, {
+        chats: this.options.chats,
         systemToolsEnabled: settings.systemToolsEnabled !== false,
         abortSignal: abort.signal,
         onEndConversation: () => {

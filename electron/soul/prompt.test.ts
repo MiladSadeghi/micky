@@ -35,6 +35,8 @@ test('keeps the spoken-voice contract and skips empty user layers', () => {
   assert.match(prompt, /fetch_webpage/)
   assert.match(prompt, /edit_personal_context/)
   assert.match(prompt, /living context/)
+  assert.match(prompt, /search_chats/)
+  assert.match(prompt, /read_chat/)
   assert.doesNotMatch(prompt, /^User$/m)
   assert.doesNotMatch(prompt, /^Memory$/m)
 })

@@ -38,6 +38,8 @@ export const INITIAL_AGENT_STATUS: AgentStatus = {
 const TOOL_STATUS_LABEL: Record<string, string> = {
   remember: 'دارم می‌ذارم تو حافظه…',
   recall: 'دارم حافظه رو می‌خونم…',
+  search_chats: 'دارم گفتگوهای قبلی رو می‌گردم…',
+  read_chat: 'دارم گفتگوی قبلی رو مرور می‌کنم…',
   update_user_profile: 'دارم پروفایلت رو عوض می‌کنم…',
   get_current_datetime: 'دارم نگاه می‌کنم ساعت چنده…',
   end_conversation: 'دارم گفتگو رو می‌بندم…',
@@ -56,6 +58,8 @@ const TOOL_STATUS_LABEL: Record<string, string> = {
 const TOOL_NAME_LABEL: Record<string, string> = {
   remember: 'حافظه',
   recall: 'یادآوری',
+  search_chats: 'جستجوی گفتگوها',
+  read_chat: 'مرور گفتگو',
   update_user_profile: 'پروفایل',
   get_current_datetime: 'زمان و تاریخ',
   end_conversation: 'گفتگو',

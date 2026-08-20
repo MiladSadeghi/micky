@@ -1,11 +1,13 @@
 import type { AgentDelta, AgentStatus } from '@/lib/agent'
 import type { ConversationStatus } from '@/lib/conversation'
+import type { ChatDetail, ChatSearchHit, ChatSearchOptions, ChatsSnapshot } from '@/lib/chats'
 import type { ModelsSnapshot, SpeechStatus, SpeechTranscript } from '@/lib/asr'
 import type { LlmProviderId, LlmSnapshot, OpenAiCompatibleProviderId } from '@/lib/llm'
 import type { SettingsSnapshot } from '@/lib/settings'
 import type { SoulFileId, SoulSnapshot, UserProfileDraft } from '@/lib/soul'
 import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
 import type { TtsPlayback, TtsProviderId, TtsSnapshot, TtsStatus } from '@/lib/tts'
+import type { DesktopPlatform } from '@/lib/shortcuts'
 
 export type MickyAPI = {
   wakeWord: {
@@ -46,6 +48,15 @@ export type MickyAPI = {
     resolveApproval: (approved: boolean) => void
     onStatusChange: (listener: (status: ConversationStatus) => void) => () => void
   }
+  chats: {
+    getSnapshot: () => Promise<ChatsSnapshot>
+    get: (chatId: string) => Promise<ChatDetail | null>
+    search: (options: ChatSearchOptions) => Promise<ChatSearchHit[]>
+    resume: (chatId: string) => Promise<{ resumed: boolean; snapshot: ChatsSnapshot }>
+    delete: (chatId: string) => Promise<{ deleted: boolean; snapshot: ChatsSnapshot }>
+    clear: () => Promise<ChatsSnapshot>
+    onSnapshotChange: (listener: (snapshot: ChatsSnapshot) => void) => () => void
+  }
   models: {
     getStatus: () => Promise<ModelsSnapshot>
     download: (modelId: string) => Promise<ModelsSnapshot>
@@ -66,6 +77,7 @@ export type MickyAPI = {
   settings: {
     getSnapshot: () => Promise<SettingsSnapshot>
     setSystemToolsEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
+    setChatHistoryEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
     setShortcut: (kind: 'assistant' | 'dictation', accelerator: string) => Promise<SettingsSnapshot>
     setDictationAiCleanup: (enabled: boolean) => Promise<SettingsSnapshot>
     setDictationAutoPaste: (enabled: boolean) => Promise<SettingsSnapshot>
@@ -74,6 +86,7 @@ export type MickyAPI = {
     onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void) => () => void
   }
   app: {
+    platform: DesktopPlatform
     setWindowMode: (mode: 'home' | 'settings') => Promise<void>
     onOpenSettings: (listener: () => void) => () => void
   }

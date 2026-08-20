@@ -47,7 +47,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   dictationAutoPaste: true,
   launchAtLogin: false,
   visionModelId: DEFAULT_VISION_MODEL_ID,
-  screenDisclosureAccepted: false
+  screenDisclosureAccepted: false,
+  chatHistoryEnabled: true
 }
 
 export class SettingsStore {
@@ -221,6 +222,7 @@ function normalizeSettings(value: unknown): AppSettings {
     launchAtLogin: record.launchAtLogin === true,
     visionModelId: readString(record.visionModelId, DEFAULT_VISION_MODEL_ID, 160),
     screenDisclosureAccepted: record.screenDisclosureAccepted === true,
+    chatHistoryEnabled: record.chatHistoryEnabled !== false,
     endpoint: {
       rule1MinTrailingSilence: readNumber(
         endpointRecord.rule1MinTrailingSilence,

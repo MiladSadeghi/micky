@@ -1,4 +1,5 @@
 import type { BrowserWindow } from 'electron'
+import { randomUUID } from 'node:crypto'
 import { interpretApproval } from '@/lib/approval'
 import {
   CONFIRM_WINDOW_MS,
@@ -13,6 +14,7 @@ import type { SettingsStore } from '../settings/store'
 import type { SpeechService } from '../speech/service'
 import type { TtsService } from '../tts/service'
 import type { WakeWordService } from '../wake-word/service'
+import type { ChatStore } from '../chats/store'
 
 type ConversationMode = ConversationStatus['mode']
 
@@ -23,6 +25,7 @@ type ConversationControllerOptions = {
   getSpeech: () => SpeechService | null
   getTts: () => TtsService | null
   getWakeWord: () => WakeWordService | null
+  getChats?: () => ChatStore | null
   getWindow: () => BrowserWindow | null
   onStatusChange?: (status: ConversationStatus) => void
   shouldUseVoice?: () => boolean
@@ -140,9 +143,50 @@ export class ConversationController {
     this.#followupDeadline = null
     this.#setStatus({ mode: 'idle', followupUntil: null, followupHeard: false })
     this.options.getAgent()?.reset()
+    this.options.getChats?.()?.endActiveChat()
     this.options.getSpeech()?.cancelSession()
     this.options.getTts()?.stop()
     this.options.getWakeWord()?.resumeListening()
+  }
+
+  resumeChat(chatId: string): boolean {
+    const chats = this.options.getChats?.()
+    const agent = this.options.getAgent()
+    if (!chats || !agent) return false
+    const detail = chats.resumeChat(chatId)
+    if (!detail) return false
+
+    this.#generation += 1
+    this.#clearFollowupTimer()
+    this.#followupDeadline = null
+    this.#setStatus({ mode: 'idle', followupUntil: null, followupHeard: false })
+    this.options.getSpeech()?.cancelSession()
+    this.options.getTts()?.stop()
+    agent.replaceHistory(chats.getContext(chatId))
+    this.options.getWakeWord()?.resumeListening()
+    return true
+  }
+
+  deleteChat(chatId: string): boolean {
+    const chats = this.options.getChats?.()
+    if (!chats) return false
+    const wasActive = chats.getActiveChatId() === chatId
+    if (wasActive) {
+      this.#generation += 1
+      this.#clearFollowupTimer()
+      this.#followupDeadline = null
+      this.#setStatus({ mode: 'idle', followupUntil: null, followupHeard: false })
+      this.options.getSpeech()?.cancelSession()
+      this.options.getTts()?.stop()
+      this.options.getAgent()?.reset()
+      this.options.getWakeWord()?.resumeListening()
+    }
+    return chats.deleteChat(chatId)
+  }
+
+  clearChats(): void {
+    this.startFresh()
+    this.options.getChats?.()?.clear()
   }
 
   dispose(): void {
@@ -167,6 +211,23 @@ export class ConversationController {
       return
     }
 
+    let chats =
+      this.options.settings.get().chatHistoryEnabled !== false ? this.options.getChats?.() : null
+    const turnId = randomUUID()
+    let chatId: string | null = null
+    if (chats) {
+      try {
+        const active = chats.ensureActiveChat(text)
+        chatId = active.chatId
+        agent.replaceHistory(chats.getContext(chatId))
+        chats.appendMessage(chatId, { turnId, role: 'user', content: text })
+      } catch (error) {
+        console.warn('[chats] Could not persist the user turn.', error)
+        chats = null
+        chatId = null
+      }
+    }
+
     this.#clearFollowupTimer()
     this.#followupDeadline = null
     const generation = ++this.#generation
@@ -175,13 +236,38 @@ export class ConversationController {
     if (generation !== this.#generation) return
     if (result === 'aborted') return
     if (result !== 'completed' && result !== 'ended') {
+      const failure = agent.getStatus().turn?.error
+      if (chatId && failure?.trim()) {
+        try {
+          chats?.appendMessage(chatId, {
+            turnId,
+            role: 'assistant',
+            content: failure,
+            state: 'error'
+          })
+        } catch (error) {
+          console.warn('[chats] Could not persist the failed turn.', error)
+        }
+      }
       this.#idleAndResume()
       return
     }
     const reply = agent.getStatus().turn?.replyText ?? ''
+    if (chatId && reply.trim()) {
+      try {
+        chats?.appendMessage(chatId, { turnId, role: 'assistant', content: reply })
+      } catch (error) {
+        console.warn('[chats] Could not persist the assistant turn.', error)
+      }
+    }
     if (reply.trim() && this.#shouldUseVoice()) await this.options.getTts()?.speak(reply)
     if (generation !== this.#generation) return
     if (result === 'ended') {
+      try {
+        chats?.endActiveChat()
+      } catch (error) {
+        console.warn('[chats] Could not close the active chat.', error)
+      }
       this.#idleAndResume()
       return
     }

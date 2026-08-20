@@ -23,6 +23,7 @@ export type AppSettings = {
   launchAtLogin: boolean
   visionModelId: string
   screenDisclosureAccepted: boolean
+  chatHistoryEnabled: boolean
 }
 
 export type SettingsSnapshot = {
@@ -34,6 +35,7 @@ export type SettingsSnapshot = {
   launchAtLogin: boolean
   visionModelId: string
   screenDisclosureAccepted: boolean
+  chatHistoryEnabled: boolean
   shortcutError: string | null
 }
 
@@ -50,6 +52,7 @@ export function toSettingsSnapshot(
     launchAtLogin: settings.launchAtLogin,
     visionModelId: settings.visionModelId,
     screenDisclosureAccepted: settings.screenDisclosureAccepted,
+    chatHistoryEnabled: settings.chatHistoryEnabled !== false,
     shortcutError
   }
 }

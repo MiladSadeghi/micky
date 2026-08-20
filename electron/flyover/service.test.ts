@@ -50,3 +50,32 @@ test('resolves the one-time disclosure response', async () => {
   service.resolveDisclosure(true)
   assert.equal(await response, true)
 })
+
+test('reveals an assistant reply after screen capture hides the flyover', () => {
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(fakeWindow())
+  service.show({
+    mode: 'screen',
+    phase: 'looking',
+    title: 'دیدن صفحه',
+    text: 'دارم نگاه می‌کنم…'
+  })
+  service.hide()
+
+  service.reveal({
+    mode: 'assistant',
+    phase: 'reply',
+    title: 'میکی',
+    text: 'جواب نهایی'
+  })
+
+  assert.deepEqual(
+    {
+      visible: service.getSnapshot().visible,
+      mode: service.getSnapshot().mode,
+      phase: service.getSnapshot().phase,
+      text: service.getSnapshot().text
+    },
+    { visible: true, mode: 'assistant', phase: 'reply', text: 'جواب نهایی' }
+  )
+})

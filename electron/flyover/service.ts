@@ -39,6 +39,12 @@ export class FlyoverService {
     return this.getSnapshot()
   }
 
+  reveal(update: Partial<FlyoverSnapshot>): FlyoverSnapshot {
+    this.#snapshot = { ...this.#snapshot, ...update, visible: true }
+    this.#present()
+    return this.getSnapshot()
+  }
+
   hide(): void {
     this.resolveDisclosure(false)
     this.#snapshot = {

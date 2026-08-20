@@ -15,6 +15,7 @@ import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { agentStatusLabel, INITIAL_AGENT_STATUS, type AgentStatus } from '@/lib/agent'
+import { CHATS_SNAPSHOT_CHANNEL, type ChatSearchOptions, type ChatsSnapshot } from '@/lib/chats'
 import { INITIAL_CONVERSATION_STATUS, type ConversationStatus } from '@/lib/conversation'
 import { AUDIO_CHUNK_CHANNEL } from '@/lib/asr'
 import { OPENROUTER_KEYS_URL, isLlmProviderId, isOpenAiCompatibleProviderId } from '@/lib/llm'
@@ -34,6 +35,7 @@ import {
 } from '@/lib/soul'
 import { isWakeWordAudioPayload } from '@/lib/wake-word'
 import { AgentService } from './agent/service'
+import { ChatStore } from './chats/store'
 import { AudioRouter } from './audio-router'
 import { ConversationController } from './conversation/controller'
 import { LlmService } from './llm/service'
@@ -68,6 +70,7 @@ let secretStore: SecretStore | null = null
 let soulStore: SoulStore | null = null
 let llmService: LlmService | null = null
 let agentService: AgentService | null = null
+let chatStore: ChatStore | null = null
 let conversation: ConversationController | null = null
 let wakeWordService: WakeWordService | null = null
 let speechService: SpeechService | null = null
@@ -219,6 +222,25 @@ async function emitSoulSnapshot(): Promise<SoulSnapshot> {
   return snapshot
 }
 
+function getChatsSnapshot(): ChatsSnapshot {
+  return (
+    chatStore?.getSnapshot() ?? {
+      activeChatId: null,
+      activeChat: null,
+      chats: [],
+      totalCount: 0
+    }
+  )
+}
+
+function emitChatsSnapshot(): ChatsSnapshot {
+  const snapshot = getChatsSnapshot()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(CHATS_SNAPSHOT_CHANNEL, snapshot)
+  }
+  return snapshot
+}
+
 function registerIpc(): void {
   ipcMain.handle('app:set-window-mode', (event, mode: unknown) => {
     if (!isTrustedSender(event.sender) || (mode !== 'home' && mode !== 'settings')) {
@@ -364,6 +386,39 @@ function registerIpc(): void {
     if (!isTrustedSender(event.sender) || typeof approved !== 'boolean') return
     conversation?.resolveApproval(approved)
   })
+  ipcMain.handle('chats:get-snapshot', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted chats request.')
+    return getChatsSnapshot()
+  })
+  ipcMain.handle('chats:get', (event, chatId: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof chatId !== 'string') {
+      throw new Error('Invalid chat request.')
+    }
+    return chatStore?.getChat(chatId.slice(0, 80)) ?? null
+  })
+  ipcMain.handle('chats:search', (event, options: unknown) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted chat search request.')
+    return chatStore?.searchChats(asChatSearchOptions(options)) ?? []
+  })
+  ipcMain.handle('chats:resume', (event, chatId: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof chatId !== 'string') {
+      throw new Error('Invalid chat resume request.')
+    }
+    const resumed = conversation?.resumeChat(chatId.slice(0, 80)) ?? false
+    return { resumed, snapshot: getChatsSnapshot() }
+  })
+  ipcMain.handle('chats:delete', (event, chatId: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof chatId !== 'string') {
+      throw new Error('Invalid chat deletion request.')
+    }
+    const deleted = conversation?.deleteChat(chatId.slice(0, 80)) ?? false
+    return { deleted, snapshot: getChatsSnapshot() }
+  })
+  ipcMain.handle('chats:clear', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted chat deletion request.')
+    conversation?.clearChats()
+    return getChatsSnapshot()
+  })
   ipcMain.handle('agent:get-status', (event) => {
     if (!isTrustedSender(event.sender)) throw new Error('Untrusted agent status request.')
     return agentService?.getStatus() ?? INITIAL_AGENT_STATUS
@@ -401,6 +456,15 @@ function registerIpc(): void {
       mainWindow.webContents.send(SETTINGS_SNAPSHOT_CHANNEL, snapshot)
     }
     return snapshot
+  })
+  ipcMain.handle('settings:set-chat-history', async (event, enabled: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof enabled !== 'boolean') {
+      throw new Error('Invalid chat history setting.')
+    }
+    await settingsStore?.update({ chatHistoryEnabled: enabled })
+    if (!enabled) conversation?.startFresh()
+    emitSettingsSnapshot()
+    return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
   })
   ipcMain.handle('settings:set-shortcut', async (event, kind: unknown, accelerator: unknown) => {
     if (
@@ -785,7 +849,7 @@ function handleAgentStatus(status: AgentStatus): void {
     return
   }
   const reply = turn.replyText.trim()
-  flyoverService?.update({
+  flyoverService?.reveal({
     mode: 'assistant',
     phase:
       turn.phase === 'tool'
@@ -936,6 +1000,7 @@ app.whenReady().then(async () => {
   await secretStore.load()
   soulStore = new SoulStore(app.getPath('userData'))
   await soulStore.initialize()
+  chatStore = new ChatStore(app.getPath('userData'), { onChange: emitChatsSnapshot })
   llmService = new LlmService({
     settings: settingsStore,
     secrets: secretStore,
@@ -958,6 +1023,7 @@ app.whenReady().then(async () => {
     settings: settingsStore,
     llm: llmService,
     soul: soulStore,
+    chats: chatStore,
     getWindow: () => mainWindow,
     onApprovalNeeded: () => conversation?.onApprovalNeeded(),
     lookAtScreen: (question, abortSignal) => visionService!.inspect(question, abortSignal),
@@ -970,6 +1036,7 @@ app.whenReady().then(async () => {
     getSpeech: () => speechService,
     getTts: () => ttsService,
     getWakeWord: () => wakeWordService,
+    getChats: () => chatStore,
     getWindow: () => mainWindow,
     onStatusChange: handleConversationStatus,
     shouldUseVoice: () => !assistantShortcutSilent
@@ -1039,10 +1106,12 @@ app.on('before-quit', () => {
   speechService?.dispose()
   ttsService?.dispose()
   flyoverService?.dispose()
+  chatStore?.close()
   tray?.destroy()
   tray = null
   conversation = null
   agentService = null
+  chatStore = null
   wakeWordService = null
   speechService = null
   ttsService = null
@@ -1069,6 +1138,23 @@ function asUserProfileDraft(value: unknown): UserProfileDraft {
     focus: readString(record.focus, 160),
     replyLength: record.replyLength === 'medium' ? 'medium' : 'short'
   }
+}
+
+function asChatSearchOptions(value: unknown): ChatSearchOptions {
+  const record = isRecord(value) ? value : {}
+  return {
+    query: typeof record.query === 'string' ? record.query.slice(0, 200) : undefined,
+    from: readFiniteNumber(record.from),
+    to: readFiniteNumber(record.to),
+    limit:
+      typeof record.limit === 'number' && Number.isInteger(record.limit)
+        ? Math.max(1, Math.min(record.limit, 20))
+        : undefined
+  }
+}
+
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function readString(value: unknown, max: number): string {

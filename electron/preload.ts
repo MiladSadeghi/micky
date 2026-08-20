@@ -15,6 +15,7 @@ import {
   type SpeechTranscript
 } from '@/lib/asr'
 import { CONVERSATION_STATUS_CHANNEL, type ConversationStatus } from '@/lib/conversation'
+import { CHATS_SNAPSHOT_CHANNEL, type ChatSearchOptions, type ChatsSnapshot } from '@/lib/chats'
 import type { MickyAPI } from '@/lib/desktop-api'
 import {
   LLM_SNAPSHOT_CHANNEL,
@@ -114,6 +115,16 @@ const api: MickyAPI = {
     onStatusChange: (listener: (status: ConversationStatus) => void): (() => void) =>
       subscribe(CONVERSATION_STATUS_CHANNEL, listener)
   },
+  chats: {
+    getSnapshot: (): Promise<ChatsSnapshot> => ipcRenderer.invoke('chats:get-snapshot'),
+    get: (chatId): Promise<Awaited<ReturnType<MickyAPI['chats']['get']>>> =>
+      ipcRenderer.invoke('chats:get', chatId),
+    search: (options: ChatSearchOptions) => ipcRenderer.invoke('chats:search', options),
+    resume: (chatId) => ipcRenderer.invoke('chats:resume', chatId),
+    delete: (chatId) => ipcRenderer.invoke('chats:delete', chatId),
+    clear: () => ipcRenderer.invoke('chats:clear'),
+    onSnapshotChange: (listener) => subscribe(CHATS_SNAPSHOT_CHANNEL, listener)
+  },
   models: {
     getStatus: (): Promise<ModelsSnapshot> => ipcRenderer.invoke('models:get-status'),
     download: (modelId: string): Promise<ModelsSnapshot> =>
@@ -142,6 +153,8 @@ const api: MickyAPI = {
     getSnapshot: (): Promise<SettingsSnapshot> => ipcRenderer.invoke('settings:get-snapshot'),
     setSystemToolsEnabled: (enabled: boolean): Promise<SettingsSnapshot> =>
       ipcRenderer.invoke('settings:set-system-tools', enabled),
+    setChatHistoryEnabled: (enabled: boolean): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-chat-history', enabled),
     setShortcut: (kind, accelerator): Promise<SettingsSnapshot> =>
       ipcRenderer.invoke('settings:set-shortcut', kind, accelerator),
     setDictationAiCleanup: (enabled): Promise<SettingsSnapshot> =>
@@ -156,6 +169,8 @@ const api: MickyAPI = {
       subscribe(SETTINGS_SNAPSHOT_CHANNEL, listener)
   },
   app: {
+    platform:
+      process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux',
     setWindowMode: (mode): Promise<void> => ipcRenderer.invoke('app:set-window-mode', mode),
     onOpenSettings: (listener): (() => void) => subscribe('app:open-settings', listener)
   },

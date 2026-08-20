@@ -5,6 +5,8 @@ import { agentStatusLabel, agentToolLabel } from './agent'
 test('uses a specific spoken status for each tool', () => {
   assert.equal(agentStatusLabel('tool', 'remember'), 'دارم می‌ذارم تو حافظه…')
   assert.equal(agentStatusLabel('tool', 'recall'), 'دارم حافظه رو می‌خونم…')
+  assert.equal(agentStatusLabel('tool', 'search_chats'), 'دارم گفتگوهای قبلی رو می‌گردم…')
+  assert.equal(agentStatusLabel('tool', 'read_chat'), 'دارم گفتگوی قبلی رو مرور می‌کنم…')
   assert.equal(agentStatusLabel('tool', 'update_user_profile'), 'دارم پروفایلت رو عوض می‌کنم…')
   assert.equal(agentStatusLabel('tool', 'get_current_datetime'), 'دارم نگاه می‌کنم ساعت چنده…')
   assert.equal(agentStatusLabel('tool', 'end_conversation'), 'دارم گفتگو رو می‌بندم…')
@@ -25,5 +27,6 @@ test('falls back to thinking copy when no tool is running', () => {
 test('uses short labels for tool activity UI', () => {
   assert.equal(agentToolLabel('read_file'), 'خواندن فایل')
   assert.equal(agentToolLabel('open_app'), 'بازکردن')
+  assert.equal(agentToolLabel('search_chats'), 'جستجوی گفتگوها')
   assert.equal(agentToolLabel('unknown'), 'انجام کار')
 })

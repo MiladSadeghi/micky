@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import type { SoulStore } from '../soul/store'
+import type { ChatStore } from '../chats/store'
 import { openUserTarget, runUserCommand, type ApprovalRequest } from '../system/exec'
 import {
   listUserDirectory,
@@ -14,6 +15,7 @@ import { PathDeniedError, resolveSafePath } from '../system/paths'
 import { fetchCleanWebpage } from '../system/web-fetch'
 
 export type AgentToolHooks = {
+  chats?: ChatStore
   onEndConversation?: () => void
   systemToolsEnabled?: boolean
   requestApproval?: (request: ApprovalRequest) => Promise<boolean>
@@ -53,6 +55,56 @@ export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): T
           )
         return {
           notes: lines.length > 0 ? lines.slice(0, 12).join('\n') : 'چیزی در حافظه پیدا نشد.'
+        }
+      }
+    }),
+    search_chats: tool({
+      description:
+        'Search the user’s locally stored past conversations. Use only when they ask what was discussed before or want to find an earlier chat. Use ISO timestamps for date boundaries and keep the query short.',
+      inputSchema: z.object({
+        query: z.string().max(200).optional().describe('Words to find; omit for date-only recall'),
+        from: z.string().max(40).optional().describe('Inclusive ISO date-time boundary'),
+        to: z.string().max(40).optional().describe('Exclusive ISO date-time boundary'),
+        limit: z.number().int().min(1).max(8).optional().describe('Maximum chats to return')
+      }),
+      execute: async ({ query, from, to, limit }) => {
+        if (!hooks.chats) return { chats: [], message: 'تاریخچه گفتگو در دسترس نیست.' }
+        const matches = hooks.chats.searchChats({
+          query,
+          from: parseDateBoundary(from),
+          to: parseDateBoundary(to),
+          limit: limit ?? 5
+        })
+        return {
+          chats: matches.map((match) => ({
+            id: match.id,
+            title: match.title,
+            date: new Date(match.updatedAt).toISOString(),
+            excerpt: capText(match.excerpt, 500)
+          }))
+        }
+      }
+    }),
+    read_chat: tool({
+      description:
+        'Read selected turns from one past chat after search_chats found it. Never read an entire long archive when a short excerpt is enough.',
+      inputSchema: z.object({
+        chatId: z.string().uuid().describe('Chat ID returned by search_chats'),
+        maxMessages: z.number().int().min(2).max(20).optional()
+      }),
+      execute: async ({ chatId, maxMessages }) => {
+        const chat = hooks.chats?.getChat(chatId)
+        if (!chat) return { found: false, message: 'گفتگو پیدا نشد.' }
+        const messages = chat.messages.slice(-(maxMessages ?? 12))
+        return {
+          found: true,
+          title: chat.title,
+          updatedAt: new Date(chat.updatedAt).toISOString(),
+          messages: messages.map((message) => ({
+            speaker: message.role === 'user' ? 'user' : 'Micky',
+            text: capText(message.content, 700),
+            at: new Date(message.createdAt).toISOString()
+          }))
         }
       }
     }),
@@ -319,4 +371,10 @@ function capText(value: string, max: number): string {
   const trimmed = value.trim()
   if (trimmed.length <= max) return trimmed
   return `${trimmed.slice(-max).trimStart()}`
+}
+
+function parseDateBoundary(value?: string): number | undefined {
+  if (!value?.trim()) return undefined
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : undefined
 }

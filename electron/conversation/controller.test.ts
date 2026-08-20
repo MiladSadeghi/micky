@@ -7,7 +7,8 @@ type Harness = ReturnType<typeof createHarness>
 
 function createHarness(
   respond: () => Promise<'completed' | 'ended' | 'aborted' | 'skipped'> = async () => 'completed',
-  shouldUseVoice: () => boolean = () => true
+  shouldUseVoice: () => boolean = () => true,
+  chats: Record<string, unknown> | null = null
 ) {
   const speech = {
     started: 0,
@@ -33,6 +34,7 @@ function createHarness(
     resetCount: 0,
     resolved: [] as boolean[],
     confirmText: null as string | null,
+    histories: [] as unknown[][],
     respond,
     getStatus() {
       return { turn: { replyText: 'جواب میکی', confirmText: this.confirmText } }
@@ -44,6 +46,9 @@ function createHarness(
     reset() {
       this.resetCount += 1
       this.resolveApproval(false)
+    },
+    replaceHistory(messages: unknown[]) {
+      this.histories.push(messages)
     },
     resolveApproval(approved: boolean) {
       this.resolved.push(approved)
@@ -67,11 +72,12 @@ function createHarness(
     getSpeech: () => speech,
     getTts: () => tts,
     getWakeWord: () => wake,
+    getChats: () => chats,
     getWindow: () => null,
     shouldUseVoice
   } as never)
 
-  return { controller, speech, wake, agent, tts }
+  return { controller, speech, wake, agent, tts, chats }
 }
 
 async function waitForFollowup(harness: Harness, started = 1): Promise<void> {
@@ -170,6 +176,51 @@ test('starts a fresh conversation and returns to wake-word listening', async () 
   harness.controller.startFresh()
   assert.equal(harness.controller.getStatus().mode, 'idle')
   assert.equal(harness.agent.resetCount, 1)
+  assert.equal(harness.speech.cancelled, 1)
+  assert.equal(harness.wake.resumed, 1)
+})
+
+test('persists the final user and assistant messages around an agent turn', async () => {
+  const appended: Array<Record<string, unknown>> = []
+  const chats = {
+    ensureActiveChat: () => ({ chatId: 'chat-1', created: true }),
+    getContext: () => [{ role: 'assistant', content: 'قبل‌تر اینجا بودیم' }],
+    appendMessage: (_chatId: string, message: Record<string, unknown>) => appended.push(message),
+    endActiveChat: () => {}
+  }
+  const harness = createHarness(
+    async () => 'completed',
+    () => true,
+    chats
+  )
+  harness.controller.onFinalTranscript('ادامه بدیم')
+  await waitForFollowup(harness)
+
+  assert.deepEqual(harness.agent.histories, [
+    [{ role: 'assistant', content: 'قبل‌تر اینجا بودیم' }]
+  ])
+  assert.equal(appended.length, 2)
+  assert.deepEqual(
+    appended.map(({ role, content }) => ({ role, content })),
+    [
+      { role: 'user', content: 'ادامه بدیم' },
+      { role: 'assistant', content: 'جواب میکی' }
+    ]
+  )
+})
+
+test('resumes a stored chat and restores its recent context', () => {
+  const chats = {
+    resumeChat: () => ({ id: 'chat-1' }),
+    getContext: () => [{ role: 'user', content: 'موضوع قبلی' }]
+  }
+  const harness = createHarness(
+    async () => 'completed',
+    () => true,
+    chats
+  )
+  assert.equal(harness.controller.resumeChat('chat-1'), true)
+  assert.deepEqual(harness.agent.histories, [[{ role: 'user', content: 'موضوع قبلی' }]])
   assert.equal(harness.speech.cancelled, 1)
   assert.equal(harness.wake.resumed, 1)
 })
