@@ -6,6 +6,7 @@ export const SETTINGS_SNAPSHOT_CHANNEL = 'settings:snapshot'
 
 export const DEFAULT_ASSISTANT_SHORTCUT = 'CommandOrControl+Shift+Space'
 export const DEFAULT_DICTATION_SHORTCUT = 'CommandOrControl+Shift+D'
+export const DEFAULT_WAKE_WORD_SHORTCUT = 'CommandOrControl+Shift+M'
 export const DEFAULT_VISION_MODEL_ID = 'google/gemini-2.5-flash'
 
 export type AppSettings = {
@@ -18,18 +19,23 @@ export type AppSettings = {
   systemToolsEnabled: boolean
   assistantShortcut: string
   dictationShortcut: string
+  wakeWordShortcut: string
   dictationAiCleanup: boolean
   dictationAutoPaste: boolean
   launchAtLogin: boolean
   visionModelId: string
   screenDisclosureAccepted: boolean
   chatHistoryEnabled: boolean
+  skillsEnabled: boolean
+  disabledSkillIds: string[]
 }
 
 export type SettingsSnapshot = {
+  wakeWordEnabled: boolean
   systemToolsEnabled: boolean
   assistantShortcut: string
   dictationShortcut: string
+  wakeWordShortcut: string
   dictationAiCleanup: boolean
   dictationAutoPaste: boolean
   launchAtLogin: boolean
@@ -44,9 +50,11 @@ export function toSettingsSnapshot(
   shortcutError: string | null = null
 ): SettingsSnapshot {
   return {
+    wakeWordEnabled: settings.wakeWordEnabled !== false,
     systemToolsEnabled: settings.systemToolsEnabled !== false,
     assistantShortcut: settings.assistantShortcut,
     dictationShortcut: settings.dictationShortcut,
+    wakeWordShortcut: settings.wakeWordShortcut,
     dictationAiCleanup: settings.dictationAiCleanup,
     dictationAutoPaste: settings.dictationAutoPaste,
     launchAtLogin: settings.launchAtLogin,

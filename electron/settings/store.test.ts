@@ -11,6 +11,7 @@ import { DEFAULT_APP_SETTINGS, SettingsStore } from './store'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
+  DEFAULT_WAKE_WORD_SHORTCUT,
   DEFAULT_VISION_MODEL_ID
 } from '@/lib/settings'
 
@@ -29,12 +30,15 @@ test('loads defaults when no settings file exists', async () => {
   assert.deepEqual(settings.tts, DEFAULT_TTS_SETTINGS)
   assert.equal(settings.assistantShortcut, DEFAULT_ASSISTANT_SHORTCUT)
   assert.equal(settings.dictationShortcut, DEFAULT_DICTATION_SHORTCUT)
+  assert.equal(settings.wakeWordShortcut, DEFAULT_WAKE_WORD_SHORTCUT)
   assert.equal(settings.dictationAiCleanup, true)
   assert.equal(settings.dictationAutoPaste, true)
   assert.equal(settings.launchAtLogin, false)
   assert.equal(settings.visionModelId, DEFAULT_VISION_MODEL_ID)
   assert.equal(settings.screenDisclosureAccepted, false)
   assert.equal(settings.chatHistoryEnabled, true)
+  assert.equal(settings.skillsEnabled, true)
+  assert.deepEqual(settings.disabledSkillIds, [])
 })
 
 test('normalizes invalid persisted values on load', async () => {
@@ -63,8 +67,11 @@ test('normalizes invalid persisted values on load', async () => {
   assert.deepEqual(settings.llm.customModelIds, ['ok/model'])
   assert.deepEqual(settings.tts, DEFAULT_TTS_SETTINGS)
   assert.equal(settings.assistantShortcut, DEFAULT_ASSISTANT_SHORTCUT)
+  assert.equal(settings.wakeWordShortcut, DEFAULT_WAKE_WORD_SHORTCUT)
   assert.equal(settings.dictationAiCleanup, true)
   assert.equal(settings.chatHistoryEnabled, true)
+  assert.equal(settings.skillsEnabled, true)
+  assert.deepEqual(settings.disabledSkillIds, [])
 })
 
 test('migrates the old twenty-second utterance endpoint', async () => {

@@ -19,12 +19,14 @@ import type { ApprovalRequest } from '../system/exec'
 import { createAgentTools } from './tools'
 import { hasExplicitScreenIntent } from '../vision/intent'
 import type { ChatStore } from '../chats/store'
+import type { SkillService } from '../skills/service'
 
 type AgentServiceOptions = {
   settings: SettingsStore
   llm: LlmService
   soul: SoulStore
   chats?: ChatStore
+  skills?: SkillService
   getWindow: () => BrowserWindow | null
   onApprovalNeeded?: () => void
   lookAtScreen?: (question: string, abortSignal?: AbortSignal) => Promise<string>
@@ -113,6 +115,7 @@ export class AgentService {
     try {
       const files = await this.options.soul.readAll()
       const settings = this.options.settings.get()
+      const skills = await this.options.skills?.refresh()
       let endRequested = false
       let screenCaptureConsumed = false
       const screenCaptureAllowed = hasExplicitScreenIntent(text)
@@ -130,11 +133,15 @@ export class AgentService {
           if (screenCaptureConsumed) return 'در هر نوبت فقط یک بار می‌توانم صفحه را ببینم.'
           screenCaptureConsumed = true
           return this.options.lookAtScreen?.(question, abort.signal) ?? 'دیدن صفحه در دسترس نیست.'
-        }
+        },
+        skills: this.options.skills
       })
       const agent = new ToolLoopAgent({
         model: this.options.llm.getModel(),
-        instructions: buildSystemPrompt(files),
+        instructions: buildSystemPrompt(
+          files,
+          skills?.enabled ? skills.skills.filter((skill) => skill.enabled) : []
+        ),
         tools,
         temperature: settings.llm.temperature,
         stopWhen: isStepCount(AGENT_MAX_STEPS)

@@ -3,12 +3,16 @@ import {
   BrainCircuit,
   CircleAlert,
   CircleHelp,
+  Database,
   Download,
   Ear,
   ExternalLink,
   History,
   Keyboard,
   Mic,
+  Puzzle,
+  RefreshCw,
+  RotateCcw,
   Sparkles,
   Trash2,
   Volume2,
@@ -20,6 +24,7 @@ import type { TtsSnapshot } from '@/lib/tts'
 import type { SettingsSnapshot } from '@/lib/settings'
 import type { LlmSnapshot } from '@/lib/llm'
 import type { ChatsSnapshot } from '@/lib/chats'
+import type { SkillsSnapshot } from '@/lib/skills'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -57,10 +62,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LlmSettings } from '@/components/llm-settings'
 import { MickyLogo } from '@/components/micky-logo'
 import { PersonalitySettings } from '@/components/personality-settings'
+import { ShenavaModelHelp } from '@/components/shenava-model-help'
 import { TtsSettings } from '@/components/tts-settings'
 import { useLlm } from '@/hooks/use-llm'
 import { useSettings } from '@/hooks/use-settings'
 import { useSoul } from '@/hooks/use-soul'
+import { useSkills } from '@/hooks/use-skills'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle
+} from '@/components/ui/empty'
 import {
   shortcutAccessibleLabel,
   shortcutDisplayKeys,
@@ -70,7 +85,7 @@ import {
   type DesktopPlatform
 } from '@/lib/shortcuts'
 
-type SettingsTab = 'asr' | 'llm' | 'tts' | 'soul' | 'history' | 'shortcuts' | 'about'
+type SettingsTab = 'asr' | 'llm' | 'tts' | 'soul' | 'skills' | 'history' | 'shortcuts' | 'about'
 
 const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
   asr: { title: 'شنیدن', description: 'مدل محلی تبدیل صدای تو به متن' },
@@ -80,13 +95,17 @@ const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
   },
   tts: { title: 'صدای میکی', description: 'سرویس و صدایی که جواب‌ها را می‌خواند' },
   soul: { title: 'آشنایی', description: 'شخصیت میکی و چیزهایی که از تو به یاد دارد' },
+  skills: {
+    title: 'مهارت‌ها',
+    description: 'راهنماهای نصب‌شده‌ای که میکی فقط هنگام نیاز بارگذاری می‌کند'
+  },
   history: {
     title: 'گفتگوها',
     description: 'متن گفتگوهایی که فقط روی همین دستگاه نگه داشته می‌شوند'
   },
   shortcuts: {
     title: 'میانبرها',
-    description: 'دستیار و دیکته را از هر برنامه‌ای سریع صدا بزن'
+    description: 'میانبر دستیار، دیکته و عبارت بیدارباش'
   },
   about: {
     title: 'میکی چطور کار می‌کند؟',
@@ -99,6 +118,7 @@ const SETTINGS_TABS = [
   { id: 'llm', label: 'مدل', icon: BrainCircuit },
   { id: 'tts', label: 'صدا', icon: Volume2 },
   { id: 'soul', label: 'شخصیت', icon: Sparkles },
+  { id: 'skills', label: 'مهارت‌ها', icon: Puzzle },
   { id: 'history', label: 'گفتگوها', icon: History },
   { id: 'shortcuts', label: 'میانبرها', icon: Keyboard },
   { id: 'about', label: 'روش کار', icon: CircleHelp }
@@ -106,20 +126,27 @@ const SETTINGS_TABS = [
 
 const HOW_MICKY_WORKS = [
   {
-    title: 'صدایت را می‌شنود',
+    title: 'صدا را به متن تبدیل می‌کند',
     description:
-      'با «هی میکی»، لمس گوی یا میانبر بیدار می‌شود و صدایت را محلی به متن تبدیل می‌کند.',
+      'مدل شنوا روی همین دستگاه صدایت را به متن تبدیل می‌کند؛ صدای خام برای تشخیص گفتار جایی فرستاده نمی‌شود.',
     icon: Mic
   },
   {
-    title: 'فکر می‌کند و انجام می‌دهد',
-    description: 'مدل زبانی درخواستت را می‌فهمد و در صورت نیاز ابزار مناسب را به کار می‌گیرد.',
+    title: 'درخواست را پردازش می‌کند',
+    description:
+      'مدل زبانی متن درخواست را می‌گیرد و در صورت نیاز ابزار مناسب را اجرا می‌کند. سرویس و مدل از تنظیمات قابل تغییرند.',
     icon: BrainCircuit
   },
   {
-    title: 'جواب می‌دهد و منتظر می‌ماند',
-    description: 'جواب کوتاه را با صدا می‌گوید و چند ثانیه برای ادامه گفتگو گوش می‌دهد.',
+    title: 'پاسخ را می‌خواند',
+    description: 'پاسخ صوتی اختیاری است. اگر روشن باشد، سرویس صدای انتخابی جواب میکی را می‌خواند.',
     icon: Volume2
+  },
+  {
+    title: 'اطلاعات را روی دستگاه نگه می‌دارد',
+    description:
+      'پروفایل، حافظه و متن گفتگوها محلی ذخیره می‌شوند. از تنظیمات می‌توانی آن‌ها را ببینی یا پاک کنی.',
+    icon: Database
   }
 ] as const
 
@@ -142,6 +169,7 @@ export function SettingsView({
   const llm = useLlm()
   const soul = useSoul()
   const settings = useSettings()
+  const skills = useSkills()
 
   return (
     <main className="voice-shell flex h-full min-h-0 flex-col overflow-hidden">
@@ -177,15 +205,18 @@ export function SettingsView({
         </TabsList>
 
         <SettingsTabPanel tab="asr">
-          <div className="flex flex-col gap-2">
-            {(snapshot?.models ?? []).map((model) => (
-              <ModelRow
-                key={model.id}
-                model={model}
-                active={(snapshot?.activeModelId ?? null) === model.id}
-                sessionActive={sessionActive}
-              />
-            ))}
+          <div className="flex flex-col gap-3">
+            <ShenavaModelHelp showFolderAction />
+            <div className="flex flex-col gap-2">
+              {(snapshot?.models ?? []).map((model) => (
+                <ModelRow
+                  key={model.id}
+                  model={model}
+                  active={(snapshot?.activeModelId ?? null) === model.id}
+                  sessionActive={sessionActive}
+                />
+              ))}
+            </div>
           </div>
         </SettingsTabPanel>
 
@@ -202,6 +233,10 @@ export function SettingsView({
           <PersonalitySettings snapshot={soul} />
         </SettingsTabPanel>
 
+        <SettingsTabPanel tab="skills">
+          <SkillsSettings snapshot={skills} />
+        </SettingsTabPanel>
+
         <SettingsTabPanel tab="history">
           {settings ? <HistorySettings settings={settings} chats={chatsSnapshot} /> : null}
         </SettingsTabPanel>
@@ -213,9 +248,119 @@ export function SettingsView({
         <SettingsTabPanel tab="about">
           <HowMickyWorks />
           <SystemToolsSetting enabled={settings?.systemToolsEnabled !== false} />
+          {window.api.app.isDevelopment ? <DeveloperSettings /> : null}
         </SettingsTabPanel>
       </Tabs>
     </main>
+  )
+}
+
+function SkillsSettings({ snapshot }: { snapshot: SkillsSnapshot | null }): React.JSX.Element {
+  const skills = snapshot?.skills ?? []
+  return (
+    <div className="flex flex-col gap-3">
+      <Card size="sm" className="bg-card/30">
+        <CardHeader>
+          <CardTitle id="skills-enabled-label">استفاده از مهارت‌ها</CardTitle>
+          <CardDescription>
+            میکی مهارت‌های نصب‌شده با skills.sh را پیدا می‌کند و راهنمای کامل هرکدام را فقط موقع
+            نیاز می‌خواند
+          </CardDescription>
+          <CardAction>
+            <Switch
+              dir="ltr"
+              checked={snapshot?.enabled !== false}
+              aria-labelledby="skills-enabled-label"
+              onCheckedChange={(enabled) => void window.api.skills.setEnabled(enabled)}
+            />
+          </CardAction>
+        </CardHeader>
+      </Card>
+
+      <Card size="sm" className="bg-card/30">
+        <CardHeader>
+          <CardTitle>مهارت‌های پیدا‌شده</CardTitle>
+          <CardDescription>
+            {skills.length > 0
+              ? `${skills.length.toLocaleString('fa-IR')} مهارت نصب‌شده روی این دستگاه`
+              : 'پوشه‌های استاندارد skills.sh بررسی می‌شوند'}
+          </CardDescription>
+          <CardAction>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="بررسی دوباره مهارت‌ها"
+              onClick={() => void window.api.skills.refresh()}
+            >
+              <RefreshCw />
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          {skills.length > 0 ? (
+            <div className="flex flex-col">
+              {skills.map((skill, index) => (
+                <div key={skill.id}>
+                  {index > 0 ? <Separator /> : null}
+                  <Field orientation="horizontal" className="py-3 first:pt-0 last:pb-0">
+                    <FieldContent className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <FieldLabel htmlFor={`skill-${skill.id}`} dir="ltr">
+                          {skill.name}
+                        </FieldLabel>
+                        <Badge variant="secondary" className="text-[0.58rem]">
+                          {skill.source}
+                        </Badge>
+                      </div>
+                      <FieldDescription className="line-clamp-2 text-[0.68rem] leading-5">
+                        {skill.description}
+                      </FieldDescription>
+                    </FieldContent>
+                    <Switch
+                      id={`skill-${skill.id}`}
+                      dir="ltr"
+                      checked={skill.enabled}
+                      disabled={snapshot?.enabled === false}
+                      onCheckedChange={(enabled) =>
+                        void window.api.skills.setSkillEnabled(skill.id, enabled)
+                      }
+                    />
+                  </Field>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Puzzle />
+                </EmptyMedia>
+                <EmptyTitle>هنوز مهارتی نصب نشده</EmptyTitle>
+                <EmptyDescription>
+                  از skills.sh یک مهارت را برای Universal نصب کن؛ میکی خودش آن را پیدا می‌کند.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <code
+                  className="w-full overflow-x-auto rounded-lg bg-muted px-3 py-2 text-[0.65rem]"
+                  dir="ltr"
+                >
+                  npx skills add owner/repo -g -a universal
+                </code>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void window.api.skills.openCatalog()}
+                >
+                  <ExternalLink data-icon="inline-start" />
+                  دیدن skills.sh
+                </Button>
+              </EmptyContent>
+            </Empty>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
@@ -246,7 +391,9 @@ function ShortcutSettings({ settings }: { settings: SettingsSnapshot }): React.J
       <Card size="sm" className="bg-card/30">
         <CardHeader>
           <CardTitle>فراخوانی سریع</CardTitle>
-          <CardDescription>حتی وقتی پنجره میکی بسته است، از هر برنامه‌ای صدایش کن</CardDescription>
+          <CardDescription>
+            این میانبرها در همه برنامه‌ها و هنگام بسته‌بودن پنجره کار می‌کنند
+          </CardDescription>
           <CardAction>
             <Badge variant="secondary" dir="ltr">
               {shortcutPlatformLabel(platform)}
@@ -272,6 +419,15 @@ function ShortcutSettings({ settings }: { settings: SettingsSnapshot }): React.J
               platform={platform}
               onChange={(value) => window.api.settings.setShortcut('dictation', value)}
             />
+            <Separator />
+            <ShortcutField
+              id="wake-word-shortcut"
+              label="روشن یا خاموش کردن عبارت بیدارباش"
+              description="شنیدن «هی میکی» را روشن یا خاموش می‌کند. میانبرهای دیگر فعال می‌مانند"
+              value={settings.wakeWordShortcut}
+              platform={platform}
+              onChange={(value) => window.api.settings.setShortcut('wakeWord', value)}
+            />
           </FieldGroup>
         </CardContent>
         <CardFooter className="gap-2 text-start">
@@ -293,11 +449,19 @@ function ShortcutSettings({ settings }: { settings: SettingsSnapshot }): React.J
 
       <Card size="sm" className="bg-card/30">
         <CardHeader>
-          <CardTitle>رفتار پس‌زمینه</CardTitle>
-          <CardDescription>دیکته و آماده‌بودن میکی را تنظیم کن</CardDescription>
+          <CardTitle>کار در پس‌زمینه</CardTitle>
+          <CardDescription>شنیدن عبارت بیدارباش، دیکته و اجرای خودکار</CardDescription>
         </CardHeader>
         <CardContent>
           <FieldGroup className="gap-4">
+            <SettingToggle
+              id="wake-word-enabled"
+              label="شنیدن «هی میکی»"
+              description="تشخیص محلی عبارت بیدارباش را کنترل می‌کند. میانبر دستیار و دیکته فعال می‌مانند"
+              enabled={settings.wakeWordEnabled}
+              onChange={(enabled) => window.api.wakeWord.setEnabled(enabled)}
+            />
+            <Separator />
             <SettingToggle
               id="dictation-ai-cleanup"
               label="تمیزکردن متن با هوش مصنوعی"
@@ -516,7 +680,7 @@ function SettingToggle({
   label: string
   description: string
   enabled: boolean
-  onChange: (enabled: boolean) => Promise<SettingsSnapshot>
+  onChange: (enabled: boolean) => Promise<unknown>
 }): React.JSX.Element {
   return (
     <Field orientation="horizontal">
@@ -616,6 +780,29 @@ function SystemToolsSetting({ enabled }: { enabled: boolean }): React.JSX.Elemen
   )
 }
 
+function DeveloperSettings(): React.JSX.Element {
+  return (
+    <Card size="sm" className="border-dashed bg-card/30">
+      <CardHeader>
+        <CardTitle>پیش‌نمایش راه‌اندازی</CardTitle>
+        <CardDescription>
+          راه‌اندازی را دوباره باز می‌کند. تنظیمات، مدل‌ها و اطلاعات فعلی پاک نمی‌شوند
+        </CardDescription>
+        <CardAction>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void window.api.soul.restartOnboarding()}
+          >
+            <RotateCcw data-icon="inline-start" />
+            باز کردن راه‌اندازی
+          </Button>
+        </CardAction>
+      </CardHeader>
+    </Card>
+  )
+}
+
 function TabIntro({ tab }: { tab: SettingsTab }): React.JSX.Element {
   return (
     <header className="flex flex-col gap-0.5 px-0.5 text-start">
@@ -655,8 +842,9 @@ function ModelRow({
             ) : null}
           </div>
           <p className="text-[0.68rem] text-muted-foreground">
-            {model.description} · {formatBytes(model.bytes)}
+            {model.description} · دانلود {formatBytes(model.bytes)}
           </p>
+          <p className="text-[0.64rem] text-muted-foreground/80">{model.systemHint}</p>
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5">

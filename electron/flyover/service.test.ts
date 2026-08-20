@@ -26,7 +26,8 @@ test('shows compact state and clears interactive actions when hidden', () => {
     title: 'دیکته',
     text: 'سلام',
     interactive: true,
-    canFinish: true
+    canFinish: true,
+    canOpenModels: true
   })
   assert.equal(service.getSnapshot().visible, true)
   assert.equal(service.getSnapshot().canFinish, true)
@@ -36,9 +37,16 @@ test('shows compact state and clears interactive actions when hidden', () => {
       visible: service.getSnapshot().visible,
       phase: service.getSnapshot().phase,
       interactive: service.getSnapshot().interactive,
-      canFinish: service.getSnapshot().canFinish
+      canFinish: service.getSnapshot().canFinish,
+      canOpenModels: service.getSnapshot().canOpenModels
     },
-    { visible: false, phase: 'hidden', interactive: false, canFinish: false }
+    {
+      visible: false,
+      phase: 'hidden',
+      interactive: false,
+      canFinish: false,
+      canOpenModels: false
+    }
   )
 })
 

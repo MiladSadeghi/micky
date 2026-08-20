@@ -8,6 +8,7 @@ const api: FlyoverAPI = {
   resolveApproval: (approved) => ipcRenderer.send('flyover:resolve-approval', approved),
   resolveDisclosure: (accepted) => ipcRenderer.send('flyover:resolve-disclosure', accepted),
   openMain: () => ipcRenderer.send('flyover:open-main'),
+  openModels: () => ipcRenderer.send('flyover:open-models'),
   onSnapshotChange: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, snapshot: FlyoverSnapshot): void =>
       listener(snapshot)

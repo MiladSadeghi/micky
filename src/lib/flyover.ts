@@ -13,6 +13,7 @@ export type FlyoverPhase =
   | 'disclosure'
   | 'reply'
   | 'done'
+  | 'unavailable'
   | 'error'
 
 export type FlyoverSnapshot = {
@@ -27,6 +28,7 @@ export type FlyoverSnapshot = {
   canFinish: boolean
   canApprove: boolean
   canRespondToDisclosure: boolean
+  canOpenModels: boolean
 }
 
 export const INITIAL_FLYOVER_SNAPSHOT: FlyoverSnapshot = {
@@ -40,7 +42,8 @@ export const INITIAL_FLYOVER_SNAPSHOT: FlyoverSnapshot = {
   interactive: false,
   canFinish: false,
   canApprove: false,
-  canRespondToDisclosure: false
+  canRespondToDisclosure: false,
+  canOpenModels: false
 }
 
 export type FlyoverAPI = {
@@ -50,5 +53,6 @@ export type FlyoverAPI = {
   resolveApproval: (approved: boolean) => void
   resolveDisclosure: (accepted: boolean) => void
   openMain: () => void
+  openModels: () => void
   onSnapshotChange: (listener: (snapshot: FlyoverSnapshot) => void) => () => void
 }

@@ -51,6 +51,8 @@ import { FlyoverService } from './flyover/service'
 import { shouldShowWakeFlyover } from './flyover/activation'
 import { ShortcutService, type ShortcutKind } from './shortcuts/service'
 import { VisionService } from './vision/service'
+import { SkillService } from './skills/service'
+import { SKILLS_SNAPSHOT_CHANNEL, type SkillsSnapshot } from '@/lib/skills'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL
@@ -80,6 +82,7 @@ let flyoverService: FlyoverService | null = null
 let shortcutService: ShortcutService | null = null
 let dictationController: DictationController | null = null
 let visionService: VisionService | null = null
+let skillService: SkillService | null = null
 let assistantFlyoverActive = false
 let assistantShortcutSilent = false
 
@@ -152,6 +155,27 @@ function emitSettingsSnapshot(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(SETTINGS_SNAPSHOT_CHANNEL, snapshot)
   }
+}
+
+async function emitSkillsSnapshot(snapshot?: SkillsSnapshot): Promise<SkillsSnapshot | null> {
+  if (!skillService) return null
+  const next = snapshot ?? (await skillService.refresh())
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(SKILLS_SNAPSHOT_CHANNEL, next)
+  }
+  return next
+}
+
+async function setWakeWordEnabled(enabled: boolean) {
+  await settingsStore?.update({ wakeWordEnabled: enabled })
+  const status = wakeWordService?.setEnabled(enabled)
+  emitSettingsSnapshot()
+  return status
+}
+
+function toggleWakeWord(): void {
+  const enabled = settingsStore?.get().wakeWordEnabled !== false
+  void setWakeWordEnabled(!enabled)
 }
 
 async function setLaunchAtLogin(enabled: boolean): Promise<void> {
@@ -257,8 +281,7 @@ function registerIpc(): void {
     if (!isTrustedSender(event.sender) || typeof enabled !== 'boolean') {
       throw new Error('Invalid wake-word setting.')
     }
-    await settingsStore?.update({ wakeWordEnabled: enabled })
-    return wakeWordService?.setEnabled(enabled)
+    return setWakeWordEnabled(enabled)
   })
   ipcMain.handle('wake-word:retry', (event) => {
     if (!isTrustedSender(event.sender)) throw new Error('Untrusted wake-word retry request.')
@@ -377,6 +400,15 @@ function registerIpc(): void {
     }
     await shell.openExternal(url)
   })
+  ipcMain.handle('models:open-folder', async (event) => {
+    if (!isTrustedSender(event.sender) || !modelRegistry) {
+      throw new Error('Invalid model folder request.')
+    }
+    const modelsRoot = modelRegistry.getModelsRoot()
+    await mkdir(modelsRoot, { recursive: true })
+    const error = await shell.openPath(modelsRoot)
+    if (error) throw new Error(error)
+  })
 
   ipcMain.handle('conversation:get-status', (event) => {
     if (!isTrustedSender(event.sender)) throw new Error('Untrusted conversation status request.')
@@ -469,7 +501,7 @@ function registerIpc(): void {
   ipcMain.handle('settings:set-shortcut', async (event, kind: unknown, accelerator: unknown) => {
     if (
       !isTrustedSender(event.sender) ||
-      (kind !== 'assistant' && kind !== 'dictation') ||
+      (kind !== 'assistant' && kind !== 'dictation' && kind !== 'wakeWord') ||
       typeof accelerator !== 'string'
     ) {
       throw new Error('Invalid shortcut setting.')
@@ -506,6 +538,33 @@ function registerIpc(): void {
     await llmService?.setVisionModel(modelId.slice(0, 160))
     emitSettingsSnapshot()
     return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
+  })
+
+  ipcMain.handle('skills:get-snapshot', async (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted skills request.')
+    return skillService?.refresh() ?? null
+  })
+  ipcMain.handle('skills:refresh', async (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted skills refresh request.')
+    return emitSkillsSnapshot()
+  })
+  ipcMain.handle('skills:set-enabled', async (event, enabled: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof enabled !== 'boolean') {
+      throw new Error('Invalid skills setting.')
+    }
+    if (!skillService) return null
+    return emitSkillsSnapshot(await skillService.setEnabled(enabled))
+  })
+  ipcMain.handle('skills:set-skill-enabled', async (event, id: unknown, enabled: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof id !== 'string' || typeof enabled !== 'boolean') {
+      throw new Error('Invalid skill setting.')
+    }
+    if (!skillService) return null
+    return emitSkillsSnapshot(await skillService.setSkillEnabled(id.slice(0, 80), enabled))
+  })
+  ipcMain.handle('skills:open-catalog', async (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted skills catalog request.')
+    await shell.openExternal('https://skills.sh')
   })
 
   ipcMain.handle('llm:get-snapshot', (event) => {
@@ -593,6 +652,18 @@ function registerIpc(): void {
     await settingsStore?.update({ onboardingCompleted: true })
     return emitSoulSnapshot()
   })
+  ipcMain.handle('soul:dismiss-onboarding', async (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted onboarding request.')
+    await settingsStore?.update({ onboardingCompleted: true })
+    return emitSoulSnapshot()
+  })
+  ipcMain.handle('soul:restart-onboarding', async (event) => {
+    if (!isTrustedSender(event.sender) || app.isPackaged) {
+      throw new Error('Onboarding replay is only available while developing Micky.')
+    }
+    await settingsStore?.update({ onboardingCompleted: false })
+    return emitSoulSnapshot()
+  })
 
   ipcMain.handle('flyover:get-snapshot', (event) => {
     if (!isTrustedFlyoverSender(event.sender)) throw new Error('Untrusted flyover request.')
@@ -620,6 +691,11 @@ function registerIpc(): void {
   })
   ipcMain.on('flyover:open-main', (event) => {
     if (isTrustedFlyoverSender(event.sender)) showMainWindow()
+  })
+  ipcMain.on('flyover:open-models', (event) => {
+    if (!isTrustedFlyoverSender(event.sender)) return
+    flyoverService?.hide()
+    showMainWindow(true)
   })
 }
 
@@ -806,6 +882,20 @@ function showAssistantFlyover(silent: boolean): void {
   })
 }
 
+function showMissingAsrModelFlyover(): void {
+  assistantFlyoverActive = false
+  assistantShortcutSilent = false
+  flyoverService?.show({
+    mode: 'assistant',
+    phase: 'unavailable',
+    title: 'میکی فعلاً غیرفعاله',
+    text: 'برای شنیدن صدات، اول یه مدل شنوا دانلود کن.',
+    hint: 'بعد از دانلود، مدل روی همین کامپیوتر اجرا می‌شه',
+    interactive: true,
+    canOpenModels: true
+  })
+}
+
 function stopAssistantFlyoverSession(): void {
   if (!assistantFlyoverActive) return
   assistantFlyoverActive = false
@@ -824,6 +914,10 @@ function handleAssistantShortcut(): void {
     return
   }
   dictationController?.cancel()
+  if (!modelRegistry?.hasInstalledModel()) {
+    showMissingAsrModelFlyover()
+    return
+  }
   ttsService?.stop()
   conversation?.onWakeActivated()
   showAssistantFlyover(true)
@@ -969,6 +1063,11 @@ function startRuntime(): void {
     getWindow: () => mainWindow,
     enabled: settings?.wakeWordEnabled,
     onActivated: (activation) => {
+      if (!modelRegistry?.hasInstalledModel()) {
+        if (activation.source === 'wake-word') showMissingAsrModelFlyover()
+        wakeWordService?.resumeListening()
+        return
+      }
       conversation?.onWakeActivated()
       if (shouldShowWakeFlyover(activation, mainWindow?.isFocused() === true)) {
         showAssistantFlyover(false)
@@ -1000,6 +1099,8 @@ app.whenReady().then(async () => {
   await secretStore.load()
   soulStore = new SoulStore(app.getPath('userData'))
   await soulStore.initialize()
+  skillService = new SkillService(settingsStore)
+  await skillService.refresh()
   chatStore = new ChatStore(app.getPath('userData'), { onChange: emitChatsSnapshot })
   llmService = new LlmService({
     settings: settingsStore,
@@ -1024,6 +1125,7 @@ app.whenReady().then(async () => {
     llm: llmService,
     soul: soulStore,
     chats: chatStore,
+    skills: skillService,
     getWindow: () => mainWindow,
     onApprovalNeeded: () => conversation?.onApprovalNeeded(),
     lookAtScreen: (question, abortSignal) => visionService!.inspect(question, abortSignal),
@@ -1080,6 +1182,7 @@ app.whenReady().then(async () => {
     registry: globalShortcut,
     onAssistant: handleAssistantShortcut,
     onDictation: () => void dictationController?.toggle(),
+    onToggleWakeWord: toggleWakeWord,
     onError: (error) => {
       shortcutError = error
       emitSettingsSnapshot()

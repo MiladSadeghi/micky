@@ -40,3 +40,26 @@ test('keeps the spoken-voice contract and skips empty user layers', () => {
   assert.doesNotMatch(prompt, /^User$/m)
   assert.doesNotMatch(prompt, /^Memory$/m)
 })
+
+test('adds only skill metadata and progressive loading guidance', () => {
+  const prompt = buildSystemPrompt(
+    { soul: '', user: '', memory: '', now: new Date('2026-08-19T18:00:00.000Z') },
+    [
+      {
+        id: 'skill-1',
+        name: 'writing-helper',
+        description: 'Use for <careful> writing.',
+        source: 'مشترک',
+        enabled: true,
+        hasResources: false
+      }
+    ]
+  )
+
+  assert.match(prompt, /load_skill/)
+  assert.match(prompt, /read_skill_resource/)
+  assert.match(prompt, /id="skill-1"/)
+  assert.match(prompt, /writing-helper/)
+  assert.match(prompt, /&lt;careful&gt;/)
+  assert.match(prompt, /load the smallest sufficient set/)
+})

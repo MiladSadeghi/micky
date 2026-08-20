@@ -8,6 +8,7 @@ import type { SoulFileId, SoulSnapshot, UserProfileDraft } from '@/lib/soul'
 import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
 import type { TtsPlayback, TtsProviderId, TtsSnapshot, TtsStatus } from '@/lib/tts'
 import type { DesktopPlatform } from '@/lib/shortcuts'
+import type { SkillsSnapshot } from '@/lib/skills'
 
 export type MickyAPI = {
   wakeWord: {
@@ -64,6 +65,7 @@ export type MickyAPI = {
     remove: (modelId: string) => Promise<ModelsSnapshot>
     setActive: (modelId: string) => Promise<ModelsSnapshot>
     openCard: (url: string) => Promise<void>
+    openFolder: () => Promise<void>
     onStatusChange: (listener: (snapshot: ModelsSnapshot) => void) => () => void
   }
   agent: {
@@ -78,15 +80,27 @@ export type MickyAPI = {
     getSnapshot: () => Promise<SettingsSnapshot>
     setSystemToolsEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
     setChatHistoryEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
-    setShortcut: (kind: 'assistant' | 'dictation', accelerator: string) => Promise<SettingsSnapshot>
+    setShortcut: (
+      kind: 'assistant' | 'dictation' | 'wakeWord',
+      accelerator: string
+    ) => Promise<SettingsSnapshot>
     setDictationAiCleanup: (enabled: boolean) => Promise<SettingsSnapshot>
     setDictationAutoPaste: (enabled: boolean) => Promise<SettingsSnapshot>
     setLaunchAtLogin: (enabled: boolean) => Promise<SettingsSnapshot>
     setVisionModel: (modelId: string) => Promise<SettingsSnapshot>
     onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void) => () => void
   }
+  skills: {
+    getSnapshot: () => Promise<SkillsSnapshot>
+    refresh: () => Promise<SkillsSnapshot>
+    setEnabled: (enabled: boolean) => Promise<SkillsSnapshot>
+    setSkillEnabled: (id: string, enabled: boolean) => Promise<SkillsSnapshot>
+    openCatalog: () => Promise<void>
+    onSnapshotChange: (listener: (snapshot: SkillsSnapshot) => void) => () => void
+  }
   app: {
     platform: DesktopPlatform
+    isDevelopment: boolean
     setWindowMode: (mode: 'home' | 'settings') => Promise<void>
     onOpenSettings: (listener: () => void) => () => void
   }
@@ -108,6 +122,8 @@ export type MickyAPI = {
     readFile: (id: SoulFileId) => Promise<string>
     writeFile: (id: SoulFileId, content: string) => Promise<SoulSnapshot>
     completeOnboarding: (draft: UserProfileDraft) => Promise<SoulSnapshot>
+    dismissOnboarding: () => Promise<SoulSnapshot>
+    restartOnboarding: () => Promise<SoulSnapshot>
     onSnapshotChange: (listener: (snapshot: SoulSnapshot) => void) => () => void
   }
 }

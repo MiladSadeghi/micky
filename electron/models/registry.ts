@@ -57,6 +57,14 @@ export class ModelRegistry {
     return join(this.options.modelsRoot, modelId)
   }
 
+  getModelsRoot(): string {
+    return this.options.modelsRoot
+  }
+
+  hasInstalledModel(): boolean {
+    return this.#installed.size > 0
+  }
+
   isInstalled(modelId: string): boolean {
     return this.#installed.has(modelId)
   }
@@ -135,6 +143,7 @@ export class ModelRegistry {
       id: model.id,
       label: model.label,
       description: model.description,
+      systemHint: model.systemHint,
       params: model.params,
       bytes: getAsrModelBytes(model),
       isDefault: model.isDefault,

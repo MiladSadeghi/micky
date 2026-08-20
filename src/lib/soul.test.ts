@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseMarkdownDocument, parseUserFacts } from './soul'
+import { parseMarkdownDocument, parseUserFacts, parseUserProfileDraft } from './soul'
 
 test('parseMarkdownDocument turns headings and Markdown lines into a readable view', () => {
   assert.deepEqual(
@@ -29,5 +29,29 @@ test('parseUserFacts supports English context files and omits Unknown values', (
       { label: 'Name', value: 'Mani' },
       { label: 'Work', value: 'Developer' }
     ]
+  )
+})
+
+test('parseUserProfileDraft restores onboarding choices and preserves hidden profile fields', () => {
+  assert.deepEqual(
+    parseUserProfileDraft(`# User Profile
+
+- Name: Mani
+- Address form: formal shoma
+- Language: Persian only
+- City: Tehran
+- Work: Developer
+- Current focus: Micky
+- Reply length: a little more detailed
+`),
+    {
+      name: 'Mani',
+      addressForm: 'shoma',
+      languageMix: 'persian',
+      city: 'Tehran',
+      work: 'Developer',
+      focus: 'Micky',
+      replyLength: 'medium'
+    }
   )
 })

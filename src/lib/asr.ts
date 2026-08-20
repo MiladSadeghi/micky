@@ -51,6 +51,7 @@ export type AsrModelView = {
   id: string
   label: string
   description: string
+  systemHint: string
   params: string
   bytes: number
   isDefault: boolean

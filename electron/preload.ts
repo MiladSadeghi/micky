@@ -42,6 +42,7 @@ import {
   type UserProfileDraft
 } from '@/lib/soul'
 import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
+import { SKILLS_SNAPSHOT_CHANNEL, type SkillsSnapshot } from '@/lib/skills'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const handler = (_event: Electron.IpcRendererEvent, payload: T): void => listener(payload)
@@ -136,6 +137,7 @@ const api: MickyAPI = {
     setActive: (modelId: string): Promise<ModelsSnapshot> =>
       ipcRenderer.invoke('models:set-active', modelId),
     openCard: (url: string): Promise<void> => ipcRenderer.invoke('models:open-card', url),
+    openFolder: (): Promise<void> => ipcRenderer.invoke('models:open-folder'),
     onStatusChange: (listener: (snapshot: ModelsSnapshot) => void): (() => void) =>
       subscribe(MODELS_STATUS_CHANNEL, listener)
   },
@@ -168,9 +170,21 @@ const api: MickyAPI = {
     onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void): (() => void) =>
       subscribe(SETTINGS_SNAPSHOT_CHANNEL, listener)
   },
+  skills: {
+    getSnapshot: (): Promise<SkillsSnapshot> => ipcRenderer.invoke('skills:get-snapshot'),
+    refresh: (): Promise<SkillsSnapshot> => ipcRenderer.invoke('skills:refresh'),
+    setEnabled: (enabled: boolean): Promise<SkillsSnapshot> =>
+      ipcRenderer.invoke('skills:set-enabled', enabled),
+    setSkillEnabled: (id: string, enabled: boolean): Promise<SkillsSnapshot> =>
+      ipcRenderer.invoke('skills:set-skill-enabled', id, enabled),
+    openCatalog: (): Promise<void> => ipcRenderer.invoke('skills:open-catalog'),
+    onSnapshotChange: (listener: (snapshot: SkillsSnapshot) => void): (() => void) =>
+      subscribe(SKILLS_SNAPSHOT_CHANNEL, listener)
+  },
   app: {
     platform:
       process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux',
+    isDevelopment: Boolean(process.defaultApp || process.env.ELECTRON_RENDERER_URL),
     setWindowMode: (mode): Promise<void> => ipcRenderer.invoke('app:set-window-mode', mode),
     onOpenSettings: (listener): (() => void) => subscribe('app:open-settings', listener)
   },
@@ -202,6 +216,8 @@ const api: MickyAPI = {
       ipcRenderer.invoke('soul:write-file', id, content),
     completeOnboarding: (draft: UserProfileDraft): Promise<SoulSnapshot> =>
       ipcRenderer.invoke('soul:complete-onboarding', draft),
+    dismissOnboarding: (): Promise<SoulSnapshot> => ipcRenderer.invoke('soul:dismiss-onboarding'),
+    restartOnboarding: (): Promise<SoulSnapshot> => ipcRenderer.invoke('soul:restart-onboarding'),
     onSnapshotChange: (listener: (snapshot: SoulSnapshot) => void): (() => void) =>
       subscribe(SOUL_SNAPSHOT_CHANNEL, listener)
   }

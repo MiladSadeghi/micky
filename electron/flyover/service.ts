@@ -54,7 +54,8 @@ export class FlyoverService {
       interactive: false,
       canFinish: false,
       canApprove: false,
-      canRespondToDisclosure: false
+      canRespondToDisclosure: false,
+      canOpenModels: false
     }
     this.#emit()
     const window = this.#window

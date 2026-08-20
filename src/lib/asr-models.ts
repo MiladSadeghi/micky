@@ -8,6 +8,7 @@ export type AsrModelDefinition = {
   id: string
   label: string
   description: string
+  systemHint: string
   params: string
   isDefault: boolean
   cardUrl: string
@@ -20,6 +21,7 @@ export const ASR_MODELS: AsrModelDefinition[] = [
     id: 'shenava-koochik-v1.0-int8',
     label: 'شنوا کوچیک',
     description: 'دقیق‌تر',
+    systemHint: 'برای بیشتر کامپیوترهای امروزی',
     params: '114M',
     isDefault: true,
     cardUrl: 'https://huggingface.co/Reza2kn/Shenava-Koochik-v1.0',
@@ -41,6 +43,7 @@ export const ASR_MODELS: AsrModelDefinition[] = [
     id: 'shenava-rizeh-v1.0-int8',
     label: 'شنوا ریزه',
     description: 'سبک و سریع',
+    systemHint: 'برای سیستم‌های قدیمی‌تر یا کم‌قدرت‌تر',
     params: '32M',
     isDefault: false,
     cardUrl: 'https://huggingface.co/Reza2kn/Shenava-Rizeh-v1.0',

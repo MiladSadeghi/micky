@@ -1,12 +1,13 @@
 import type { SettingsStore } from '../settings/store'
 
-export type ShortcutKind = 'assistant' | 'dictation'
+export type ShortcutKind = 'assistant' | 'dictation' | 'wakeWord'
 
 type ShortcutServiceOptions = {
   settings: SettingsStore
   registry: ShortcutRegistry
   onAssistant: () => void
   onDictation: () => void
+  onToggleWakeWord: () => void
   onError?: (error: string | null) => void
 }
 
@@ -26,14 +27,17 @@ export class ShortcutService {
     const settings = this.options.settings.get()
     this.#registerInitial('assistant', settings.assistantShortcut)
     this.#registerInitial('dictation', settings.dictationShortcut)
+    this.#registerInitial('wakeWord', settings.wakeWordShortcut)
   }
 
   async replace(kind: ShortcutKind, accelerator: string): Promise<boolean> {
     const next = accelerator.trim()
     const previous = this.#registered.get(kind)
     if (!next || next === previous) return Boolean(previous)
-    const other = kind === 'assistant' ? 'dictation' : 'assistant'
-    if (this.#registered.get(other) === next || this.options.registry.isRegistered(next)) {
+    const conflictsWithMicky = [...this.#registered.entries()].some(
+      ([registeredKind, registered]) => registeredKind !== kind && registered === next
+    )
+    if (conflictsWithMicky || this.options.registry.isRegistered(next)) {
       this.options.onError?.('این میانبر را برنامه دیگری گرفته است؛ میانبر قبلی نگه داشته شد.')
       return false
     }
@@ -48,7 +52,11 @@ export class ShortcutService {
     this.#registered.set(kind, next)
     try {
       await this.options.settings.update(
-        kind === 'assistant' ? { assistantShortcut: next } : { dictationShortcut: next }
+        kind === 'assistant'
+          ? { assistantShortcut: next }
+          : kind === 'dictation'
+            ? { dictationShortcut: next }
+            : { wakeWordShortcut: next }
       )
     } catch (error) {
       this.options.registry.unregister(next)
@@ -75,10 +83,14 @@ export class ShortcutService {
     const success = this.options.registry.register(accelerator, this.#callback(kind))
     if (success) this.#registered.set(kind, accelerator)
     else
-      this.options.onError?.(`میانبر ${kind === 'assistant' ? 'دستیار' : 'دیکته'} در دسترس نیست.`)
+      this.options.onError?.(
+        `میانبر ${kind === 'assistant' ? 'دستیار' : kind === 'dictation' ? 'دیکته' : 'شنیدن همیشگی'} در دسترس نیست.`
+      )
   }
 
   #callback(kind: ShortcutKind): () => void {
-    return kind === 'assistant' ? this.options.onAssistant : this.options.onDictation
+    if (kind === 'assistant') return this.options.onAssistant
+    if (kind === 'dictation') return this.options.onDictation
+    return this.options.onToggleWakeWord
   }
 }

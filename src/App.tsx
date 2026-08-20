@@ -1,4 +1,13 @@
-import { History, MessageSquarePlus, Mic, MicOff, RotateCcw, Settings } from 'lucide-react'
+import {
+  Download,
+  History,
+  MessageSquarePlus,
+  Mic,
+  MicOff,
+  RotateCcw,
+  Settings
+} from 'lucide-react'
+import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip'
 import { useEffect, useState } from 'react'
 import { ThinkingOrb, type OrbState } from 'thinking-orbs'
 import { AgentReplyView } from '@/components/agent-reply-view'
@@ -6,6 +15,13 @@ import { ChatDetailView, ChatHistoryView } from '@/components/chat-history-view'
 import { ConversationPreview } from '@/components/conversation-preview'
 import { MickyLogo } from '@/components/micky-logo'
 import { Button } from '@/components/ui/button'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle
+} from '@/components/ui/empty'
 import { OnboardingView } from '@/components/onboarding-view'
 import { SettingsView } from '@/components/settings-view'
 import { TranscriptView } from '@/components/transcript-view'
@@ -54,6 +70,40 @@ function FollowupTimer({ until }: { until: number }): React.JSX.Element {
   )
 }
 
+type FooterButtonProps = Omit<React.ComponentProps<typeof Button>, 'aria-label'> & {
+  label: string
+}
+
+function FooterButton({ label, children, ...props }: FooterButtonProps): React.JSX.Element {
+  return (
+    <TooltipPrimitive.Root>
+      <TooltipPrimitive.Trigger
+        delay={0}
+        render={
+          <Button
+            variant="outline"
+            size="icon-lg"
+            className="size-11 rounded-xl border-grey-800 text-muted-foreground hover:border-grey-700 [&_svg]:size-5"
+            aria-label={label}
+            {...props}
+          />
+        }
+      >
+        {children}
+      </TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Positioner side="top" sideOffset={8}>
+          <TooltipPrimitive.Popup
+            className="z-50 rounded-lg border border-border/70 bg-popover/95 px-2 py-1 text-[0.65rem] text-popover-foreground shadow-lg backdrop-blur-sm data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95"
+          >
+            {label}
+          </TooltipPrimitive.Popup>
+        </TooltipPrimitive.Positioner>
+      </TooltipPrimitive.Portal>
+    </TooltipPrimitive.Root>
+  )
+}
+
 function App(): React.JSX.Element {
   const [screen, setScreen] = useState<'home' | 'history' | 'chat' | 'settings'>('home')
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
@@ -65,11 +115,14 @@ function App(): React.JSX.Element {
   const conversation = useConversation()
   const chats = useChats()
   const tts = useTts()
+  const onboardingActive = soul?.onboardingCompleted === false
   useTurnCues(conversation)
   useEffect(() => window.api.app.onOpenSettings(() => setScreen('settings')), [])
   useEffect(() => {
-    void window.api.app.setWindowMode(screen === 'settings' ? 'settings' : 'home')
-  }, [screen])
+    void window.api.app.setWindowMode(
+      !onboardingActive && screen === 'settings' ? 'settings' : 'home'
+    )
+  }, [onboardingActive, screen])
   const phase = status?.phase ?? 'loading'
   const enabled = status?.enabled ?? true
   const isActivated = phase === 'activated'
@@ -79,6 +132,7 @@ function App(): React.JSX.Element {
   const confirmOpen = isConfirm && !conversation?.followupHeard
   const isLoading = phase === 'loading'
   const hasInstalledModel = models?.models.some((model) => model.state === 'installed') ?? false
+  const modelUnavailable = models !== null && !hasInstalledModel
   const transcript = speech?.transcript
   const agentTurn = agent?.turn
   const agentBusy =
@@ -104,12 +158,17 @@ function App(): React.JSX.Element {
   const activeChat = chats?.activeChat ?? null
   const hasConversation = Boolean(agentTurn || activeChat)
   const showContinuePrompt =
-    hasConversation && !responseBusy && !isActivated && !isFollowup && !error
+    !modelUnavailable && hasConversation && !responseBusy && !isActivated && !isFollowup && !error
   const showFreshAction =
-    hasConversation && !responseBusy && !showTranscript && (!isActivated || isFollowup)
+    !modelUnavailable &&
+    hasConversation &&
+    !responseBusy &&
+    !showTranscript &&
+    (!isActivated || isFollowup)
 
-  const orbState: OrbState =
-    tts.status.phase === 'synthesizing'
+  const orbState: OrbState = modelUnavailable
+    ? 'breathing'
+    : tts.status.phase === 'synthesizing'
       ? 'connecting'
       : tts.status.phase === 'playing'
         ? 'composing'
@@ -128,6 +187,10 @@ function App(): React.JSX.Element {
                     : ORB_STATE[phase]
 
   const handleOrbClick = (): void => {
+    if (modelUnavailable) {
+      setScreen('settings')
+      return
+    }
     if (isLoading) return
     if (phase === 'error') {
       void window.api.wakeWord.retry()
@@ -153,8 +216,14 @@ function App(): React.JSX.Element {
     void window.api.wakeWord.activateManually()
   }
 
-  if (soul && !soul.onboardingCompleted) {
-    return <OnboardingView />
+  if (onboardingActive && soul) {
+    return (
+      <OnboardingView
+        models={models}
+        ttsSnapshot={tts.snapshot}
+        existingUserMarkdown={soul.files.user}
+      />
+    )
   }
 
   if (screen === 'settings') {
@@ -199,7 +268,9 @@ function App(): React.JSX.Element {
 
       <section className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6">
         <div className="flex min-h-9 max-w-80 items-center">
-          {activeChat ? (
+          {modelUnavailable ? (
+            <p className="text-xs text-muted-foreground">برای شروع یه مدل شنوا لازمه</p>
+          ) : activeChat ? (
             <Button
               variant="ghost"
               size="sm"
@@ -216,24 +287,28 @@ function App(): React.JSX.Element {
           type="button"
           className="orb-trigger"
           data-phase={
-            agent?.phase === 'confirm'
-              ? 'activated'
-              : responseBusy
-                ? 'thinking'
-                : isActivated || isFollowup
-                  ? 'activated'
-                  : phase
+            modelUnavailable
+              ? 'disabled'
+              : agent?.phase === 'confirm'
+                ? 'activated'
+                : responseBusy
+                  ? 'thinking'
+                  : isActivated || isFollowup
+                    ? 'activated'
+                    : phase
           }
           onClick={handleOrbClick}
-          disabled={isLoading}
+          disabled={isLoading && !modelUnavailable}
           aria-label={
-            responseBusy
-              ? 'قطع پاسخ'
-              : isFollowup
-                ? 'پایان گفتگو و بازگشت به حالت آماده'
-                : isActivated
-                  ? 'پایان شنیدن و بازگشت به حالت آماده'
-                  : 'شروع شنیدن'
+            modelUnavailable
+              ? 'باز کردن تنظیمات مدل شنوا'
+              : responseBusy
+                ? 'قطع پاسخ'
+                : isFollowup
+                  ? 'پایان گفتگو و بازگشت به حالت آماده'
+                  : isActivated
+                    ? 'پایان شنیدن و بازگشت به حالت آماده'
+                    : 'شروع شنیدن'
           }
           aria-pressed={isActivated || responseBusy || isFollowup}
         >
@@ -251,13 +326,17 @@ function App(): React.JSX.Element {
               size={64}
               theme="dark"
               speed={isActivated || responseBusy || isFollowup ? 1.25 : 0.82}
-              paused={phase === 'disabled' || (phase === 'error' && !responseBusy)}
+              paused={
+                modelUnavailable || phase === 'disabled' || (phase === 'error' && !responseBusy)
+              }
               aria-label={
-                responseBusy
-                  ? 'میکی در حال جواب‌دادن است'
-                  : isFollowup || isActivated
-                    ? 'میکی در حال گوش‌دادن است'
-                    : 'میکی آماده شنیدن است'
+                modelUnavailable
+                  ? 'میکی تا دانلود مدل شنوا غیرفعال است'
+                  : responseBusy
+                    ? 'میکی در حال جواب‌دادن است'
+                    : isFollowup || isActivated
+                      ? 'میکی در حال گوش‌دادن است'
+                      : 'میکی آماده شنیدن است'
               }
             />
           </span>
@@ -267,7 +346,22 @@ function App(): React.JSX.Element {
           className="flex min-h-16 w-full max-w-80 flex-col items-center gap-3"
           aria-live="polite"
         >
-          {showAgent && agentTurn ? (
+          {modelUnavailable ? (
+            <Empty className="gap-2 p-0">
+              <EmptyHeader className="gap-1">
+                <EmptyTitle>میکی فعلاً غیرفعاله</EmptyTitle>
+                <EmptyDescription className="max-w-64">
+                  برای شنیدن صدات، اول یه مدل شنوا دانلود کن. بعدش مدل روی همین کامپیوتر اجرا می‌شه.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button size="sm" onClick={() => setScreen('settings')}>
+                  <Download data-icon="inline-start" />
+                  دانلود مدل شنوا
+                </Button>
+              </EmptyContent>
+            </Empty>
+          ) : showAgent && agentTurn ? (
             <AgentReplyView
               turnId={agentTurn.turnId}
               text={agentTurn.error ?? agentTurn.replyText}
@@ -313,71 +407,46 @@ function App(): React.JSX.Element {
               گفتگوی تازه
             </Button>
           ) : null}
-          {!hasInstalledModel && !error ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              className="text-muted-foreground"
-              onClick={() => setScreen('settings')}
-            >
-              دانلود مدل شنوا
-            </Button>
-          ) : null}
         </div>
       </section>
 
       <footer className="flex items-center justify-center gap-1 pb-5">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground"
+        <FooterButton
+          label="گفتگوهای قبلی"
           onClick={() => setScreen('history')}
-          aria-label="گفتگوهای قبلی"
         >
           <History />
-        </Button>
+        </FooterButton>
         {hasConversation && !showFreshAction ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground"
+          <FooterButton
+            label="گفتگوی تازه"
             onClick={handleStartFresh}
-            aria-label="گفتگوی تازه"
           >
             <MessageSquarePlus />
-          </Button>
+          </FooterButton>
         ) : null}
         {phase === 'error' ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground"
+          <FooterButton
+            label="تلاش دوباره"
             onClick={() => void window.api.wakeWord.retry()}
-            aria-label="تلاش دوباره"
           >
             <RotateCcw />
-          </Button>
+          </FooterButton>
         ) : (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground"
+          <FooterButton
+            label={enabled ? 'خاموش‌کردن شنیدن' : 'روشن‌کردن شنیدن'}
             onClick={() => void window.api.wakeWord.setEnabled(!enabled)}
-            aria-label={enabled ? 'خاموش‌کردن شنیدن' : 'روشن‌کردن شنیدن'}
             aria-pressed={enabled}
           >
             {enabled ? <Mic /> : <MicOff />}
-          </Button>
+          </FooterButton>
         )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground"
+        <FooterButton
+          label="تنظیمات"
           onClick={() => setScreen('settings')}
-          aria-label="تنظیمات"
         >
           <Settings />
-        </Button>
+        </FooterButton>
       </footer>
     </main>
   )

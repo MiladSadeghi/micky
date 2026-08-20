@@ -16,6 +16,7 @@ import {
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
+  DEFAULT_WAKE_WORD_SHORTCUT,
   DEFAULT_VISION_MODEL_ID,
   type AppSettings,
   type AppSettingsPatch
@@ -43,12 +44,15 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   systemToolsEnabled: true,
   assistantShortcut: DEFAULT_ASSISTANT_SHORTCUT,
   dictationShortcut: DEFAULT_DICTATION_SHORTCUT,
+  wakeWordShortcut: DEFAULT_WAKE_WORD_SHORTCUT,
   dictationAiCleanup: true,
   dictationAutoPaste: true,
   launchAtLogin: false,
   visionModelId: DEFAULT_VISION_MODEL_ID,
   screenDisclosureAccepted: false,
-  chatHistoryEnabled: true
+  chatHistoryEnabled: true,
+  skillsEnabled: true,
+  disabledSkillIds: []
 }
 
 export class SettingsStore {
@@ -104,7 +108,8 @@ function cloneSettings(settings: AppSettings): AppSettings {
       customModelIds: [...settings.llm.customModelIds]
     },
     tts: { ...settings.tts },
-    systemToolsEnabled: settings.systemToolsEnabled !== false
+    systemToolsEnabled: settings.systemToolsEnabled !== false,
+    disabledSkillIds: [...settings.disabledSkillIds]
   }
 }
 
@@ -217,12 +222,15 @@ function normalizeSettings(value: unknown): AppSettings {
     systemToolsEnabled: record.systemToolsEnabled !== false,
     assistantShortcut: readShortcut(record.assistantShortcut, DEFAULT_ASSISTANT_SHORTCUT),
     dictationShortcut: readShortcut(record.dictationShortcut, DEFAULT_DICTATION_SHORTCUT),
+    wakeWordShortcut: readShortcut(record.wakeWordShortcut, DEFAULT_WAKE_WORD_SHORTCUT),
     dictationAiCleanup: record.dictationAiCleanup !== false,
     dictationAutoPaste: record.dictationAutoPaste !== false,
     launchAtLogin: record.launchAtLogin === true,
     visionModelId: readString(record.visionModelId, DEFAULT_VISION_MODEL_ID, 160),
     screenDisclosureAccepted: record.screenDisclosureAccepted === true,
     chatHistoryEnabled: record.chatHistoryEnabled !== false,
+    skillsEnabled: record.skillsEnabled !== false,
+    disabledSkillIds: readStringArray(record.disabledSkillIds, 200, 80),
     endpoint: {
       rule1MinTrailingSilence: readNumber(
         endpointRecord.rule1MinTrailingSilence,
@@ -256,4 +264,15 @@ function readOptionalString(value: unknown, fallback: string, max: number): stri
 function readShortcut(value: unknown, fallback: string): string {
   const shortcut = readString(value, fallback, 80)
   return shortcut.includes('+') ? shortcut : fallback
+}
+
+function readStringArray(value: unknown, maxItems: number, maxLength: number): string[] {
+  if (!Array.isArray(value)) return []
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map((item) => item.trim().slice(0, maxLength))
+    )
+  ].slice(0, maxItems)
 }

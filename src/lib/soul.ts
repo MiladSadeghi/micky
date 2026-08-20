@@ -47,6 +47,35 @@ export const EMPTY_USER_PROFILE: UserProfileDraft = {
   replyLength: 'short'
 }
 
+export function parseUserProfileDraft(markdown: string): UserProfileDraft {
+  const values = new Map<string, string>()
+  for (const rawLine of markdown.replace(/\r\n/g, '\n').split('\n')) {
+    const match = /^-\s+([^:]+):\s*(.*)$/.exec(rawLine.trim())
+    if (match) values.set(match[1].trim().toLowerCase(), match[2].trim())
+  }
+
+  const read = (...labels: string[]): string => {
+    for (const label of labels) {
+      const value = values.get(label.toLowerCase())
+      if (value && value.toLowerCase() !== 'unknown' && value !== 'نامشخص') return value
+    }
+    return ''
+  }
+
+  const addressForm = read('Address form', 'خطاب')
+  const languageMix = read('Language', 'زبان')
+  const replyLength = read('Reply length', 'طول پاسخ')
+  return {
+    name: read('Name', 'نام'),
+    addressForm: /formal|shoma|شما/i.test(addressForm) ? 'shoma' : 'to',
+    languageMix: /persian only|^persian$|فقط فارسی/i.test(languageMix) ? 'persian' : 'mixed',
+    city: read('City', 'شهر'),
+    work: read('Work', 'کار'),
+    focus: read('Current focus', 'تمرکز'),
+    replyLength: /medium|more detailed|مفصل|متوسط/i.test(replyLength) ? 'medium' : 'short'
+  }
+}
+
 export function parseMarkdownDocument(
   markdown: string,
   fallbackTitle: string

@@ -13,6 +13,7 @@ import {
 } from '../system/fs-tools'
 import { PathDeniedError, resolveSafePath } from '../system/paths'
 import { fetchCleanWebpage } from '../system/web-fetch'
+import type { SkillService } from '../skills/service'
 
 export type AgentToolHooks = {
   chats?: ChatStore
@@ -22,6 +23,7 @@ export type AgentToolHooks = {
   abortSignal?: AbortSignal
   screenCaptureAllowed?: boolean
   lookAtScreen?: (question: string) => Promise<string>
+  skills?: SkillService
 }
 
 export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): ToolSet {
@@ -179,6 +181,36 @@ export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): T
         hooks.onEndConversation?.()
         return { ended: true }
       }
+    })
+  }
+
+  if (hooks.skills) {
+    tools.load_skill = tool({
+      description:
+        'Load the complete SKILL.md instructions for one enabled skill from the catalog. Call only when the skill clearly matches the current request, before following it.',
+      inputSchema: z.object({
+        skillId: z.string().min(1).max(80).describe('Exact skill ID from the enabled catalog')
+      }),
+      execute: async ({ skillId }) =>
+        guardAction(async () => hooks.skills!.load(skillId), 'بارگذاری مهارت ناموفق بود.')
+    })
+
+    tools.read_skill_resource = tool({
+      description:
+        'Read one bundled text resource from a skill already loaded with load_skill. Use only when that skill explicitly points to the resource or it is necessary for its workflow.',
+      inputSchema: z.object({
+        skillId: z.string().min(1).max(80).describe('Exact ID of the loaded skill'),
+        path: z
+          .string()
+          .min(1)
+          .max(500)
+          .describe('Relative resource path returned by load_skill; never an absolute path')
+      }),
+      execute: async ({ skillId, path }) =>
+        guardAction(
+          async () => hooks.skills!.readResource(skillId, path),
+          'خواندن فایل مهارت ناموفق بود.'
+        )
     })
   }
 

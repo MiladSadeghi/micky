@@ -52,7 +52,9 @@ const TOOL_STATUS_LABEL: Record<string, string> = {
   run_command: 'دارم یه دستور اجرا می‌کنم…',
   look_at_screen: 'دارم صفحه رو نگاه می‌کنم…',
   fetch_webpage: 'دارم صفحهٔ وب رو می‌خونم…',
-  edit_personal_context: 'دارم تنظیمات شخصی رو آماده می‌کنم…'
+  edit_personal_context: 'دارم تنظیمات شخصی رو آماده می‌کنم…',
+  load_skill: 'دارم مهارت مناسب رو آماده می‌کنم…',
+  read_skill_resource: 'دارم راهنمای مهارت رو می‌خونم…'
 }
 
 const TOOL_NAME_LABEL: Record<string, string> = {
@@ -72,7 +74,9 @@ const TOOL_NAME_LABEL: Record<string, string> = {
   run_command: 'اجرای دستور',
   look_at_screen: 'دیدن صفحه',
   fetch_webpage: 'خواندن وب',
-  edit_personal_context: 'تنظیمات شخصی'
+  edit_personal_context: 'تنظیمات شخصی',
+  load_skill: 'بارگذاری مهارت',
+  read_skill_resource: 'راهنمای مهارت'
 }
 
 export function agentStatusLabel(phase: AgentPhase | string, toolName?: string | null): string {

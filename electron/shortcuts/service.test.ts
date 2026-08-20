@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
+  DEFAULT_WAKE_WORD_SHORTCUT,
   type AppSettingsPatch
 } from '@/lib/settings'
 import type { SettingsStore } from '../settings/store'
@@ -13,6 +14,7 @@ function harness(options?: { occupied?: string[]; failUpdate?: boolean }) {
   const occupied = new Set(options?.occupied ?? [])
   let unregisterAllCalled = false
   const patches: AppSettingsPatch[] = []
+  let wakeWordToggles = 0
   const registry: ShortcutRegistry = {
     register: (accelerator, callback) => {
       if (occupied.has(accelerator) || registered.has(accelerator)) return false
@@ -31,7 +33,8 @@ function harness(options?: { occupied?: string[]; failUpdate?: boolean }) {
   const settings = {
     get: () => ({
       assistantShortcut: DEFAULT_ASSISTANT_SHORTCUT,
-      dictationShortcut: DEFAULT_DICTATION_SHORTCUT
+      dictationShortcut: DEFAULT_DICTATION_SHORTCUT,
+      wakeWordShortcut: DEFAULT_WAKE_WORD_SHORTCUT
     }),
     update: async (patch: AppSettingsPatch) => {
       if (options?.failUpdate) throw new Error('disk failure')
@@ -45,6 +48,9 @@ function harness(options?: { occupied?: string[]; failUpdate?: boolean }) {
     registry,
     onAssistant: () => undefined,
     onDictation: () => undefined,
+    onToggleWakeWord: () => {
+      wakeWordToggles += 1
+    },
     onError: (error) => errors.push(error)
   })
   return {
@@ -52,6 +58,7 @@ function harness(options?: { occupied?: string[]; failUpdate?: boolean }) {
     registered,
     patches,
     errors,
+    wakeWordToggleCount: () => wakeWordToggles,
     wasUnregisterAllCalled: () => unregisterAllCalled
   }
 }
@@ -61,9 +68,21 @@ test('registers defaults and releases all shortcuts on shutdown', () => {
   state.service.registerAll()
   assert.equal(state.registered.has(DEFAULT_ASSISTANT_SHORTCUT), true)
   assert.equal(state.registered.has(DEFAULT_DICTATION_SHORTCUT), true)
+  assert.equal(state.registered.has(DEFAULT_WAKE_WORD_SHORTCUT), true)
+  state.registered.get(DEFAULT_WAKE_WORD_SHORTCUT)?.()
+  assert.equal(state.wakeWordToggleCount(), 1)
   state.service.unregisterAll()
   assert.equal(state.registered.size, 0)
   assert.equal(state.wasUnregisterAllCalled(), true)
+})
+
+test('persists a replacement for the listening toggle', async () => {
+  const state = harness()
+  state.service.registerAll()
+  const replacement = 'CommandOrControl+Alt+L'
+  assert.equal(await state.service.replace('wakeWord', replacement), true)
+  assert.deepEqual(state.patches.at(-1), { wakeWordShortcut: replacement })
+  assert.equal(state.registered.has(replacement), true)
 })
 
 test('preserves the previous shortcut when a replacement conflicts', async () => {

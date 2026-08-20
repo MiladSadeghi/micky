@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Eye, Mic, Sparkles, Square, X } from 'lucide-react'
+import { Check, ChevronDown, Download, Eye, Mic, MicOff, Sparkles, Square, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ThinkingOrb, type OrbState } from 'thinking-orbs'
 import { INITIAL_FLYOVER_SNAPSHOT, type FlyoverSnapshot } from '@/lib/flyover'
@@ -17,6 +17,7 @@ const FLYOVER_ORB_STATE: Record<FlyoverSnapshot['phase'], OrbState> = {
   disclosure: 'listening',
   reply: 'composing',
   done: 'breathing',
+  unavailable: 'breathing',
   error: 'shaping'
 }
 
@@ -33,7 +34,14 @@ export function FlyoverApp(): React.JSX.Element {
     setDetailsOpen(false)
   }, [snapshot.detail, snapshot.phase])
 
-  const Icon = snapshot.mode === 'screen' ? Eye : snapshot.phase === 'reply' ? Sparkles : Mic
+  const Icon =
+    snapshot.phase === 'unavailable'
+      ? MicOff
+      : snapshot.mode === 'screen'
+        ? Eye
+        : snapshot.phase === 'reply'
+          ? Sparkles
+          : Mic
   const active = ['listening', 'thinking', 'tool', 'cleaning', 'capturing', 'looking'].includes(
     snapshot.phase
   )
@@ -128,6 +136,17 @@ export function FlyoverApp(): React.JSX.Element {
                 نه
               </Button>
             </>
+          ) : null}
+          {snapshot.canOpenModels ? (
+            <div className="flex flex-col gap-1">
+              <Button size="sm" onClick={window.flyoverApi.openModels}>
+                <Download data-icon="inline-start" />
+                دانلود مدل
+              </Button>
+              <Button size="sm" variant="ghost" onClick={window.flyoverApi.cancel}>
+                بعداً
+              </Button>
+            </div>
           ) : null}
         </div>
       </section>
