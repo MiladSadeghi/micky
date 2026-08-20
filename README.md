@@ -9,7 +9,7 @@ Say what you need, let Micky do the work, and get back to your life.
 
 [![Release](https://img.shields.io/github/v/release/xmannii/micky?style=flat-square)](https://github.com/xmannii/micky/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/xmannii/micky/ci.yml?branch=main&style=flat-square&label=tests)](https://github.com/xmannii/micky/actions/workflows/ci.yml)
-[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-111111?style=flat-square&logo=apple)](https://github.com/xmannii/micky/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-111111?style=flat-square&logo=apple)](https://github.com/xmannii/micky/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square&logo=windows11)](https://github.com/xmannii/micky/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](#license)
 </div>
@@ -77,7 +77,6 @@ There is no analytics or telemetry code in the app. For the most private setup, 
 Download the latest installer from [GitHub Releases](https://github.com/xmannii/micky/releases/latest):
 
 - **macOS Apple Silicon:** `micky-<version>-arm64.dmg`
-- **macOS Intel:** `micky-<version>-x64.dmg`
 - **Windows x64:** `micky-<version>-x64-setup.exe`
 
 The first public builds are unsigned and the macOS builds are not notarized. macOS Gatekeeper or Windows SmartScreen may therefore show a warning. Only download Micky from this repository, and inspect or build the source yourself if that warning is not acceptable to you.
