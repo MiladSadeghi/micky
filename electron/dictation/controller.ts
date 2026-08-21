@@ -1,11 +1,10 @@
-import { clipboard } from 'electron'
 import { generateText } from 'ai'
 import type { FlyoverService } from '../flyover/service'
 import type { LlmService } from '../llm/service'
 import type { SettingsStore } from '../settings/store'
 import type { SpeechService } from '../speech/service'
 import type { WakeWordService } from '../wake-word/service'
-import { PasteService, type ForegroundTarget } from '../system/paste'
+import type { ForegroundTarget, PasteService } from '../system/paste'
 
 type DictationControllerOptions = {
   settings: SettingsStore
@@ -13,7 +12,9 @@ type DictationControllerOptions = {
   getSpeech: () => SpeechService | null
   getWakeWord: () => WakeWordService | null
   flyover: FlyoverService
-  paste?: PasteService
+  paste: PasteService
+  writeClipboard: (text: string) => void
+  refine?: (text: string) => Promise<string>
   interruptAssistant: () => void
 }
 
@@ -25,7 +26,7 @@ export class DictationController {
   readonly #paste: PasteService
 
   constructor(private readonly options: DictationControllerOptions) {
-    this.#paste = options.paste ?? new PasteService()
+    this.#paste = options.paste
   }
 
   isActive(): boolean {
@@ -37,7 +38,7 @@ export class DictationController {
       this.finish()
       return
     }
-    if (this.#finishing) this.cancel()
+    if (this.#finishing) return
     await this.start()
   }
 
@@ -55,6 +56,9 @@ export class DictationController {
       phase: 'listening',
       title: 'دیکته',
       text: 'دارم گوش می‌دم…',
+      hint: this.#willRefine()
+        ? 'دوباره میانبر را بزن؛ بعد متن با هوش مصنوعی تمیز می‌شود.'
+        : 'برای پایان، میانبر دیکته را دوباره بزن.',
       interactive: false,
       canFinish: false
     })
@@ -68,7 +72,8 @@ export class DictationController {
     this.options.flyover.update({
       phase: 'cleaning',
       title: 'دیکته',
-      text: 'دارم متن رو آماده می‌کنم…',
+      text: 'دارم گفتارت رو نهایی می‌کنم…',
+      hint: null,
       interactive: false,
       canFinish: false
     })
@@ -100,9 +105,18 @@ export class DictationController {
       return
     }
 
-    const finalText = await this.#cleanup(raw)
+    const willRefine = this.#willRefine()
+    this.options.flyover.update({
+      phase: 'cleaning',
+      title: willRefine ? 'اصلاح با هوش مصنوعی' : 'دیکته',
+      text: willRefine ? 'دارم متن رو تمیز می‌کنم…' : 'دارم متن رو آماده می‌کنم…',
+      hint: null,
+      interactive: false,
+      canFinish: false
+    })
+    const finalText = willRefine ? await this.#cleanup(raw) : raw
     if (generation !== this.#generation) return
-    clipboard.writeText(finalText)
+    this.options.writeClipboard(finalText)
     const settings = this.options.settings.get()
     const pasted =
       settings.dictationAutoPaste && this.#target ? await this.#paste.paste(this.#target) : false
@@ -122,11 +136,8 @@ export class DictationController {
   }
 
   async #cleanup(text: string): Promise<string> {
-    if (!this.options.settings.get().dictationAiCleanup || !this.options.llm.isConfigured()) {
-      return text
-    }
     try {
-      const settings = this.options.settings.get()
+      if (this.options.refine) return (await this.options.refine(text)).trim() || text
       const result = await generateText({
         model: this.options.llm.getModel(),
         system:
@@ -140,6 +151,10 @@ export class DictationController {
     } catch {
       return text
     }
+  }
+
+  #willRefine(): boolean {
+    return this.options.settings.get().dictationAiCleanup && this.options.llm.isConfigured()
   }
 
   #complete(generation: number, text: string, phase: 'done' | 'error'): void {

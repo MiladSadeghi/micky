@@ -1,5 +1,6 @@
 import {
   app,
+  clipboard,
   shell,
   BrowserWindow,
   ipcMain,
@@ -50,6 +51,7 @@ import { DictationController } from './dictation/controller'
 import { FlyoverService } from './flyover/service'
 import { shouldShowWakeFlyover } from './flyover/activation'
 import { ShortcutService, type ShortcutKind } from './shortcuts/service'
+import { PasteService } from './system/paste'
 import { VisionService } from './vision/service'
 import { SkillService } from './skills/service'
 import { SKILLS_SNAPSHOT_CHANNEL, type SkillsSnapshot } from '@/lib/skills'
@@ -1169,6 +1171,8 @@ app.whenReady().then(async () => {
     getSpeech: () => speechService,
     getWakeWord: () => wakeWordService,
     flyover: flyoverService,
+    paste: new PasteService(),
+    writeClipboard: (text) => clipboard.writeText(text),
     interruptAssistant: () => {
       assistantFlyoverActive = false
       assistantShortcutSilent = false

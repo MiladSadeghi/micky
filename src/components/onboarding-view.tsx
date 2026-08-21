@@ -1,6 +1,7 @@
 import {
   BrainCircuit,
   Check,
+  ClipboardPaste,
   Database,
   Download,
   Ear,
@@ -29,7 +30,11 @@ import { MickyLogo } from '@/components/micky-logo'
 import { ShenavaModelHelp } from '@/components/shenava-model-help'
 import { useLlm } from '@/hooks/use-llm'
 import { useSettings } from '@/hooks/use-settings'
-import { DEFAULT_ASSISTANT_SHORTCUT, DEFAULT_WAKE_WORD_SHORTCUT } from '@/lib/settings'
+import {
+  DEFAULT_ASSISTANT_SHORTCUT,
+  DEFAULT_DICTATION_SHORTCUT,
+  DEFAULT_WAKE_WORD_SHORTCUT
+} from '@/lib/settings'
 import { shortcutDisplayKeys } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 
@@ -249,6 +254,7 @@ export function OnboardingView({
           <ReadyStep
             name={draft.name}
             assistantShortcut={settings?.assistantShortcut ?? DEFAULT_ASSISTANT_SHORTCUT}
+            dictationShortcut={settings?.dictationShortcut ?? DEFAULT_DICTATION_SHORTCUT}
             wakeWordShortcut={settings?.wakeWordShortcut ?? DEFAULT_WAKE_WORD_SHORTCUT}
           />
         ) : null}
@@ -306,7 +312,7 @@ function Welcome({ onStart }: { onStart: () => void }): React.JSX.Element {
         </h1>
         <p className="max-w-[19rem] text-[0.9rem] leading-7 text-muted-foreground">
           قراره دستیار فارسی جدیدت باشم. می‌تونی باهام حرف بزنی، سؤال بپرسی یا ازم بخوای کاری برات
-          انجام بدم.
+          انجام بدم؛ هرجا هم بخوای، حرف‌هات رو برات می‌نویسم.
         </p>
         <p className="max-w-[19rem] text-[0.78rem] leading-6 text-muted-foreground">
           اول یه راه‌اندازی کوتاه داریم تا مدل‌ها و لحن جواب‌هام رو برای خودت تنظیم کنی.
@@ -498,13 +504,16 @@ function SpeechModel({
 function ReadyStep({
   name,
   assistantShortcut,
+  dictationShortcut,
   wakeWordShortcut
 }: {
   name: string
   assistantShortcut: string
+  dictationShortcut: string
   wakeWordShortcut: string
 }): React.JSX.Element {
   const assistantKeys = shortcutDisplayKeys(assistantShortcut, window.api.app.platform)
+  const dictationKeys = shortcutDisplayKeys(dictationShortcut, window.api.app.platform)
   const wakeWordKeys = shortcutDisplayKeys(wakeWordShortcut, window.api.app.platform)
   return (
     <div className="flex flex-1 flex-col justify-center gap-6 pb-6 text-start">
@@ -531,6 +540,17 @@ function ReadyStep({
                 <Kbd key={key}>{key}</Kbd>
               ))}
             </KbdGroup>
+          </span>
+        </ReadyHint>
+        <ReadyHint icon={ClipboardPaste} title="به‌جای تایپ، دیکته کن">
+          <span className="flex flex-wrap items-center gap-2">
+            جای نوشتن رو انتخاب کن و این میانبر رو بزن
+            <KbdGroup dir="ltr">
+              {dictationKeys.map((key) => (
+                <Kbd key={key}>{key}</Kbd>
+              ))}
+            </KbdGroup>
+            حرفت به متن تبدیل می‌شه، کپی می‌شه و همون‌جا می‌چسبه.
           </span>
         </ReadyHint>
         <ReadyHint icon={MicOff} title="وقتی نمی‌خوای گوش کنم">

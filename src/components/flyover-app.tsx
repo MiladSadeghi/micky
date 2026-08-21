@@ -39,7 +39,7 @@ export function FlyoverApp(): React.JSX.Element {
       ? MicOff
       : snapshot.mode === 'screen'
         ? Eye
-        : snapshot.phase === 'reply'
+        : snapshot.phase === 'reply' || snapshot.phase === 'cleaning'
           ? Sparkles
           : Mic
   const active = ['listening', 'thinking', 'tool', 'cleaning', 'capturing', 'looking'].includes(
