@@ -29,11 +29,11 @@ import { LlmSettings } from '@/components/llm-settings'
 import { MickyLogo } from '@/components/micky-logo'
 import { ShenavaModelHelp } from '@/components/shenava-model-help'
 import { useLlm } from '@/hooks/use-llm'
-import { useSettings } from '@/hooks/use-settings'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
-  DEFAULT_WAKE_WORD_SHORTCUT
+  DEFAULT_WAKE_WORD_SHORTCUT,
+  type SettingsSnapshot
 } from '@/lib/settings'
 import { shortcutDisplayKeys } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
@@ -46,15 +46,16 @@ type OnboardingViewProps = {
   models: ModelsSnapshot | null
   ttsSnapshot: TtsSnapshot | null
   existingUserMarkdown: string
+  settings: SettingsSnapshot | null
 }
 
 export function OnboardingView({
   models,
   ttsSnapshot,
-  existingUserMarkdown
+  existingUserMarkdown,
+  settings
 }: OnboardingViewProps): React.JSX.Element {
   const llm = useLlm()
-  const settings = useSettings()
   const [step, setStep] = useState<Step>(0)
   const [draft, setDraft] = useState<UserProfileDraft>(() =>
     existingUserMarkdown ? parseUserProfileDraft(existingUserMarkdown) : { ...EMPTY_USER_PROFILE }

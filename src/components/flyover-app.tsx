@@ -4,6 +4,8 @@ import { ThinkingOrb, type OrbState } from 'thinking-orbs'
 import { INITIAL_FLYOVER_SNAPSHOT, type FlyoverSnapshot } from '@/lib/flyover'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { applyAppearance } from '@/lib/appearance'
+import { DEFAULT_FONT_FAMILY, DEFAULT_THEME, type AppearanceSnapshot } from '@/lib/settings'
 
 const FLYOVER_ORB_STATE: Record<FlyoverSnapshot['phase'], OrbState> = {
   hidden: 'breathing',
@@ -24,10 +26,23 @@ const FLYOVER_ORB_STATE: Record<FlyoverSnapshot['phase'], OrbState> = {
 export function FlyoverApp(): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<FlyoverSnapshot>(INITIAL_FLYOVER_SNAPSHOT)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [appearance, setAppearance] = useState<AppearanceSnapshot>({
+    theme: DEFAULT_THEME,
+    fontFamily: DEFAULT_FONT_FAMILY
+  })
 
   useEffect(() => {
     void window.flyoverApi.getSnapshot().then(setSnapshot)
     return window.flyoverApi.onSnapshotChange(setSnapshot)
+  }, [])
+
+  useEffect(() => {
+    const update = (next: AppearanceSnapshot): void => {
+      applyAppearance(next)
+      setAppearance(next)
+    }
+    void window.flyoverApi.getAppearance().then(update)
+    return window.flyoverApi.onAppearanceChange(update)
   }, [])
 
   useEffect(() => {
@@ -48,7 +63,7 @@ export function FlyoverApp(): React.JSX.Element {
   return (
     <main className="flex h-full items-start justify-center p-2" dir="rtl">
       <section
-        className="flyover-surface flex min-h-24 w-full items-center gap-3 rounded-[1.4rem] border border-border/70 bg-grey-950/95 px-3.5 py-3 shadow-2xl backdrop-blur-xl"
+        className="flyover-surface flex min-h-24 w-full items-center gap-3 rounded-[1.4rem] border border-border/70 bg-card/95 px-3.5 py-3 shadow-2xl backdrop-blur-xl"
         aria-live="polite"
       >
         <span
@@ -61,7 +76,7 @@ export function FlyoverApp(): React.JSX.Element {
             <ThinkingOrb
               state={FLYOVER_ORB_STATE[snapshot.phase]}
               size={20}
-              theme={snapshot.phase === 'confirm' ? 'light' : 'dark'}
+              theme={snapshot.phase === 'confirm' ? 'light' : appearance.theme}
               speed={active ? 1.2 : 0.85}
               paused={snapshot.phase === 'hidden' || snapshot.phase === 'error'}
               aria-hidden="true"

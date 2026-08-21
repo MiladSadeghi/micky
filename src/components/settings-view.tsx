@@ -10,6 +10,7 @@ import {
   History,
   Keyboard,
   Mic,
+  Palette,
   Puzzle,
   RefreshCw,
   RotateCcw,
@@ -64,8 +65,8 @@ import { MickyLogo } from '@/components/micky-logo'
 import { PersonalitySettings } from '@/components/personality-settings'
 import { ShenavaModelHelp } from '@/components/shenava-model-help'
 import { TtsSettings } from '@/components/tts-settings'
+import { AppearanceSettings } from '@/components/appearance-settings'
 import { useLlm } from '@/hooks/use-llm'
-import { useSettings } from '@/hooks/use-settings'
 import { useSoul } from '@/hooks/use-soul'
 import { useSkills } from '@/hooks/use-skills'
 import {
@@ -85,9 +86,11 @@ import {
   type DesktopPlatform
 } from '@/lib/shortcuts'
 
-type SettingsTab = 'asr' | 'llm' | 'tts' | 'soul' | 'skills' | 'history' | 'shortcuts' | 'about'
+type SettingsTab =
+  'appearance' | 'asr' | 'llm' | 'tts' | 'soul' | 'skills' | 'history' | 'shortcuts' | 'about'
 
 const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
+  appearance: { title: 'ظاهر', description: 'حالت نمایش و قلم نوشته‌های میکی' },
   asr: { title: 'شنیدن', description: 'مدل محلی تبدیل صدای تو به متن' },
   llm: {
     title: 'مدل زبانی',
@@ -121,6 +124,7 @@ const SETTINGS_TABS = [
   { id: 'skills', label: 'مهارت‌ها', icon: Puzzle },
   { id: 'history', label: 'گفتگوها', icon: History },
   { id: 'shortcuts', label: 'میانبرها', icon: Keyboard },
+  { id: 'appearance', label: 'ظاهر', icon: Palette },
   { id: 'about', label: 'روش کار', icon: CircleHelp }
 ] satisfies ReadonlyArray<{ id: SettingsTab; label: string; icon: typeof Ear }>
 
@@ -155,6 +159,7 @@ type SettingsViewProps = {
   ttsSnapshot: TtsSnapshot | null
   chatsSnapshot: ChatsSnapshot | null
   sessionActive: boolean
+  settings: SettingsSnapshot | null
   onBack: () => void
 }
 
@@ -163,12 +168,12 @@ export function SettingsView({
   ttsSnapshot,
   chatsSnapshot,
   sessionActive,
+  settings,
   onBack
 }: SettingsViewProps): React.JSX.Element {
   const [tab, setTab] = useState<SettingsTab>('asr')
   const llm = useLlm()
   const soul = useSoul()
-  const settings = useSettings()
   const skills = useSkills()
 
   return (
@@ -243,6 +248,10 @@ export function SettingsView({
 
         <SettingsTabPanel tab="shortcuts">
           {settings ? <ShortcutSettings settings={settings} /> : null}
+        </SettingsTabPanel>
+
+        <SettingsTabPanel tab="appearance">
+          {settings ? <AppearanceSettings settings={settings} /> : null}
         </SettingsTabPanel>
 
         <SettingsTabPanel tab="about">

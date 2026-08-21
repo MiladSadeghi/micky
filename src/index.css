@@ -3,10 +3,9 @@
 @import 'shadcn/tailwind.css';
 
 @font-face {
-  font-family: 'Modam';
-  src: url('./assets/fonts/ModamVF.woff2') format('woff2-variations');
-  font-weight: 200 900;
-  font-stretch: 70% 100%;
+  font-family: 'Vazirmatn';
+  src: url('./assets/fonts/Vazirmatn-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
@@ -61,11 +60,59 @@
   --color-grey-500: var(--grey-500);
   --color-grey-400: var(--grey-400);
   --color-grey-300: var(--grey-300);
-  --font-sans: 'Modam', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--app-font-family), 'Vazirmatn', ui-sans-serif, system-ui, sans-serif;
 }
 
-:root,
+:root {
+  color-scheme: light;
+  --app-font-family: 'Vazirmatn';
+  --radius: 0.625rem;
+  --cream: #1c1c19;
+  --grey-950: #fbfaf4;
+  --grey-900: #f3f2e9;
+  --grey-800: #e7e6dc;
+  --grey-700: #d3d1c5;
+  --grey-600: #aaa89d;
+  --grey-500: #77766e;
+  --grey-400: #595850;
+  --grey-300: #3d3c37;
+  --background: color-mix(in srgb, var(--grey-950) 82%, transparent);
+  --foreground: var(--cream);
+  --card: var(--grey-950);
+  --card-foreground: var(--cream);
+  --popover: var(--grey-950);
+  --popover-foreground: var(--cream);
+  --primary: #1c1c19;
+  --primary-foreground: #fffef7;
+  --secondary: var(--grey-800);
+  --secondary-foreground: var(--cream);
+  --muted: var(--grey-900);
+  --muted-foreground: var(--grey-400);
+  --accent: var(--grey-800);
+  --accent-foreground: var(--cream);
+  --destructive: #c9343a;
+  --destructive-foreground: #ffffff;
+  --border: var(--grey-700);
+  --input: var(--grey-700);
+  --ring: var(--cream);
+  --chart-1: var(--cream);
+  --chart-2: var(--grey-400);
+  --chart-3: var(--grey-300);
+  --chart-4: var(--grey-500);
+  --chart-5: var(--grey-600);
+  --sidebar: var(--grey-950);
+  --sidebar-foreground: var(--cream);
+  --sidebar-primary: var(--cream);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--grey-800);
+  --sidebar-accent-foreground: var(--cream);
+  --sidebar-border: var(--grey-700);
+  --sidebar-ring: var(--cream);
+}
+
+:root:not(.light),
 .dark {
+  color-scheme: dark;
   --radius: 0.625rem;
   --cream: #e1e0cc;
   --grey-950: #0a0a09;
@@ -120,10 +167,6 @@
   #root {
     height: 100%;
     background: transparent;
-  }
-
-  html {
-    color-scheme: dark;
   }
 
   body {

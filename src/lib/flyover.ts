@@ -1,3 +1,5 @@
+import type { AppearanceSnapshot } from './settings'
+
 export const FLYOVER_SNAPSHOT_CHANNEL = 'flyover:snapshot'
 
 export type FlyoverMode = 'assistant' | 'dictation' | 'screen'
@@ -48,6 +50,7 @@ export const INITIAL_FLYOVER_SNAPSHOT: FlyoverSnapshot = {
 
 export type FlyoverAPI = {
   getSnapshot: () => Promise<FlyoverSnapshot>
+  getAppearance: () => Promise<AppearanceSnapshot>
   cancel: () => void
   finishDictation: () => void
   resolveApproval: (approved: boolean) => void
@@ -55,4 +58,5 @@ export type FlyoverAPI = {
   openMain: () => void
   openModels: () => void
   onSnapshotChange: (listener: (snapshot: FlyoverSnapshot) => void) => () => void
+  onAppearanceChange: (listener: (snapshot: AppearanceSnapshot) => void) => () => void
 }

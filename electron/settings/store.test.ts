@@ -11,6 +11,8 @@ import { DEFAULT_APP_SETTINGS, SettingsStore } from './store'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_THEME,
   DEFAULT_WAKE_WORD_SHORTCUT,
   DEFAULT_VISION_MODEL_ID
 } from '@/lib/settings'
@@ -39,6 +41,8 @@ test('loads defaults when no settings file exists', async () => {
   assert.equal(settings.chatHistoryEnabled, true)
   assert.equal(settings.skillsEnabled, true)
   assert.deepEqual(settings.disabledSkillIds, [])
+  assert.equal(settings.theme, DEFAULT_THEME)
+  assert.equal(settings.fontFamily, DEFAULT_FONT_FAMILY)
 })
 
 test('normalizes invalid persisted values on load', async () => {
@@ -72,6 +76,28 @@ test('normalizes invalid persisted values on load', async () => {
   assert.equal(settings.chatHistoryEnabled, true)
   assert.equal(settings.skillsEnabled, true)
   assert.deepEqual(settings.disabledSkillIds, [])
+  assert.equal(settings.theme, DEFAULT_THEME)
+  assert.equal(settings.fontFamily, DEFAULT_FONT_FAMILY)
+})
+
+test('normalizes and persists appearance settings', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'micky-settings-'))
+  const store = new SettingsStore(dir)
+  await store.load()
+  await store.update({ theme: 'light', fontFamily: '  Shabnam  ' })
+
+  const settings = await store.load()
+  assert.equal(settings.theme, 'light')
+  assert.equal(settings.fontFamily, 'Shabnam')
+
+  await writeFile(
+    join(dir, 'settings.json'),
+    JSON.stringify({ theme: 'system', fontFamily: 'bad;font' }),
+    'utf8'
+  )
+  const normalized = await store.load()
+  assert.equal(normalized.theme, DEFAULT_THEME)
+  assert.equal(normalized.fontFamily, DEFAULT_FONT_FAMILY)
 })
 
 test('migrates the old twenty-second utterance endpoint', async () => {

@@ -20,7 +20,15 @@ import { CHATS_SNAPSHOT_CHANNEL, type ChatSearchOptions, type ChatsSnapshot } fr
 import { INITIAL_CONVERSATION_STATUS, type ConversationStatus } from '@/lib/conversation'
 import { AUDIO_CHUNK_CHANNEL } from '@/lib/asr'
 import { OPENROUTER_KEYS_URL, isLlmProviderId, isOpenAiCompatibleProviderId } from '@/lib/llm'
-import { SETTINGS_SNAPSHOT_CHANNEL, toSettingsSnapshot } from '@/lib/settings'
+import {
+  APPEARANCE_SNAPSHOT_CHANNEL,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_THEME,
+  SETTINGS_SNAPSHOT_CHANNEL,
+  toAppearanceSnapshot,
+  toSettingsSnapshot,
+  type AppTheme
+} from '@/lib/settings'
 import type { SpeechSessionMode } from '@/lib/asr'
 import {
   ELEVENLABS_KEYS_URL,
@@ -153,10 +161,34 @@ function positionFlyover(window: BrowserWindow): void {
 
 function emitSettingsSnapshot(): void {
   if (!settingsStore) return
-  const snapshot = toSettingsSnapshot(settingsStore.get(), shortcutError)
+  const settings = settingsStore.get()
+  const snapshot = toSettingsSnapshot(settings, shortcutError)
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(SETTINGS_SNAPSHOT_CHANNEL, snapshot)
   }
+  if (flyoverWindow && !flyoverWindow.isDestroyed()) {
+    flyoverWindow.webContents.send(APPEARANCE_SNAPSHOT_CHANNEL, toAppearanceSnapshot(settings))
+  }
+}
+
+function applyNativeTheme(theme: AppTheme): void {
+  nativeTheme.themeSource = theme
+  if (mainWindow && !mainWindow.isDestroyed() && process.platform !== 'darwin') {
+    mainWindow.setTitleBarOverlay(titleBarOverlay(theme))
+  }
+}
+
+function titleBarOverlay(theme: AppTheme = settingsStore?.get().theme ?? DEFAULT_THEME) {
+  return theme === 'light'
+    ? { color: '#fbfaf4', symbolColor: '#1c1c19', height: 36 }
+    : { color: '#121211', symbolColor: '#e1e0cc', height: 36 }
+}
+
+function appearanceQuery(): Record<string, string> {
+  const appearance = settingsStore
+    ? toAppearanceSnapshot(settingsStore.get())
+    : { theme: DEFAULT_THEME, fontFamily: DEFAULT_FONT_FAMILY }
+  return { theme: appearance.theme, fontFamily: appearance.fontFamily }
 }
 
 async function emitSkillsSnapshot(snapshot?: SkillsSnapshot): Promise<SkillsSnapshot | null> {
@@ -480,6 +512,29 @@ function registerIpc(): void {
     if (!isTrustedSender(event.sender)) throw new Error('Untrusted settings request.')
     return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
   })
+  ipcMain.handle('appearance:get-snapshot', (event) => {
+    if (!isTrustedSender(event.sender) && !isTrustedFlyoverSender(event.sender)) {
+      throw new Error('Untrusted appearance request.')
+    }
+    return settingsStore ? toAppearanceSnapshot(settingsStore.get()) : null
+  })
+  ipcMain.handle('settings:set-theme', async (event, theme: unknown) => {
+    if (!isTrustedSender(event.sender) || (theme !== 'light' && theme !== 'dark')) {
+      throw new Error('Invalid theme setting.')
+    }
+    await settingsStore?.update({ theme })
+    applyNativeTheme(theme)
+    emitSettingsSnapshot()
+    return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
+  })
+  ipcMain.handle('settings:set-font-family', async (event, fontFamily: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof fontFamily !== 'string') {
+      throw new Error('Invalid font setting.')
+    }
+    await settingsStore?.update({ fontFamily })
+    emitSettingsSnapshot()
+    return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
+  })
   ipcMain.handle('settings:set-system-tools', async (event, enabled: unknown) => {
     if (!isTrustedSender(event.sender) || typeof enabled !== 'boolean') {
       throw new Error('Invalid system tools setting.')
@@ -734,9 +789,7 @@ function createWindow(): void {
           backgroundMaterial: 'acrylic' as const,
           titleBarStyle: 'hidden' as const,
           titleBarOverlay: {
-            color: '#121211',
-            symbolColor: '#e1e0cc',
-            height: 36
+            ...titleBarOverlay()
           }
         }
       : {}),
@@ -744,9 +797,7 @@ function createWindow(): void {
       ? {
           titleBarStyle: 'hidden' as const,
           titleBarOverlay: {
-            color: '#121211',
-            symbolColor: '#e1e0cc',
-            height: 36
+            ...titleBarOverlay()
           }
         }
       : {}),
@@ -774,17 +825,25 @@ function createWindow(): void {
   })
   window.webContents.session.setPermissionRequestHandler(
     (webContents, permission, callback, details) => {
+      const permissionName = permission as string
+      const trustedMainFrame = webContents === window.webContents && details.isMainFrame
       const mediaTypes = permission === 'media' && 'mediaTypes' in details ? details.mediaTypes : []
       const audioOnly =
         permission === 'media' && mediaTypes?.includes('audio') && !mediaTypes.includes('video')
-      callback(Boolean(webContents === window.webContents && audioOnly))
+      const localFonts = permissionName === 'local-fonts' && trustedMainFrame
+      callback(Boolean((webContents === window.webContents && audioOnly) || localFonts))
     }
   )
   window.webContents.session.setPermissionCheckHandler(
     (webContents, permission, _requestingOrigin, details) => {
+      const permissionName = permission as string
       const audioOnly =
         permission === 'media' && 'mediaType' in details && details.mediaType === 'audio'
-      return Boolean(webContents === window.webContents && audioOnly)
+      const localFonts =
+        permissionName === 'local-fonts' &&
+        webContents === window.webContents &&
+        details.isMainFrame
+      return Boolean((webContents === window.webContents && audioOnly) || localFonts)
     }
   )
   window.on('close', (event) => {
@@ -798,9 +857,13 @@ function createWindow(): void {
   })
 
   if (RENDERER_DEV_URL) {
-    void window.loadURL(RENDERER_DEV_URL)
+    const rendererUrl = new URL(RENDERER_DEV_URL)
+    const query = appearanceQuery()
+    rendererUrl.searchParams.set('theme', query.theme)
+    rendererUrl.searchParams.set('fontFamily', query.fontFamily)
+    void window.loadURL(rendererUrl.toString())
   } else {
-    void window.loadFile(join(__dirname, '../dist/index.html'))
+    void window.loadFile(join(__dirname, '../dist/index.html'), { query: appearanceQuery() })
   }
 
   startRuntime()
@@ -841,9 +904,16 @@ function createFlyoverWindow(): void {
   })
   flyoverService?.attachWindow(window)
   if (RENDERER_DEV_URL) {
-    void window.loadURL(`${RENDERER_DEV_URL}?flyover=1`)
+    const rendererUrl = new URL(RENDERER_DEV_URL)
+    const query = appearanceQuery()
+    rendererUrl.searchParams.set('flyover', '1')
+    rendererUrl.searchParams.set('theme', query.theme)
+    rendererUrl.searchParams.set('fontFamily', query.fontFamily)
+    void window.loadURL(rendererUrl.toString())
   } else {
-    void window.loadFile(join(__dirname, '../dist/index.html'), { query: { flyover: '1' } })
+    void window.loadFile(join(__dirname, '../dist/index.html'), {
+      query: { flyover: '1', ...appearanceQuery() }
+    })
   }
 }
 
@@ -1086,7 +1156,7 @@ function startRuntime(): void {
 }
 
 app.whenReady().then(async () => {
-  nativeTheme.themeSource = 'dark'
+  nativeTheme.themeSource = DEFAULT_THEME
   if (process.platform === 'darwin') {
     const icon = resolveAppIcon()
     if (icon) app.dock?.setIcon(icon)
@@ -1097,6 +1167,7 @@ app.whenReady().then(async () => {
 
   settingsStore = new SettingsStore(app.getPath('userData'))
   await settingsStore.load()
+  applyNativeTheme(settingsStore.get().theme)
   secretStore = new SecretStore(app.getPath('userData'))
   await secretStore.load()
   soulStore = new SoulStore(app.getPath('userData'))

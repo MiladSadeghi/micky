@@ -31,6 +31,7 @@ import { useChats } from '@/hooks/use-chats'
 import { useModels } from '@/hooks/use-models'
 import { useSoul } from '@/hooks/use-soul'
 import { useSpeech } from '@/hooks/use-speech'
+import { useSettings } from '@/hooks/use-settings'
 import { useTurnCues } from '@/hooks/use-turn-cues'
 import { useTts } from '@/hooks/use-tts'
 import { useWakeWord } from '@/hooks/use-wake-word'
@@ -111,6 +112,7 @@ function App(): React.JSX.Element {
   const speech = useSpeech()
   const models = useModels()
   const soul = useSoul()
+  const settings = useSettings()
   const agent = useAgent()
   const conversation = useConversation()
   const chats = useChats()
@@ -222,6 +224,7 @@ function App(): React.JSX.Element {
         models={models}
         ttsSnapshot={tts.snapshot}
         existingUserMarkdown={soul.files.user}
+        settings={settings}
       />
     )
   }
@@ -232,6 +235,7 @@ function App(): React.JSX.Element {
         snapshot={models}
         ttsSnapshot={tts.snapshot}
         chatsSnapshot={chats}
+        settings={settings}
         sessionActive={sessionActive}
         onBack={() => setScreen('home')}
       />
@@ -324,7 +328,7 @@ function App(): React.JSX.Element {
             <ThinkingOrb
               state={orbState}
               size={64}
-              theme="dark"
+              theme={settings?.theme === 'light' ? 'light' : 'dark'}
               speed={isActivated || responseBusy || isFollowup ? 1.25 : 0.82}
               paused={
                 modelUnavailable || phase === 'disabled' || (phase === 'error' && !responseBusy)

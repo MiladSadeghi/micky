@@ -3,7 +3,7 @@ import type { ConversationStatus } from '@/lib/conversation'
 import type { ChatDetail, ChatSearchHit, ChatSearchOptions, ChatsSnapshot } from '@/lib/chats'
 import type { ModelsSnapshot, SpeechStatus, SpeechTranscript } from '@/lib/asr'
 import type { LlmProviderId, LlmSnapshot, OpenAiCompatibleProviderId } from '@/lib/llm'
-import type { SettingsSnapshot } from '@/lib/settings'
+import type { AppTheme, SettingsSnapshot } from '@/lib/settings'
 import type { SoulFileId, SoulSnapshot, UserProfileDraft } from '@/lib/soul'
 import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
 import type { TtsPlayback, TtsProviderId, TtsSnapshot, TtsStatus } from '@/lib/tts'
@@ -88,6 +88,8 @@ export type MickyAPI = {
     setDictationAutoPaste: (enabled: boolean) => Promise<SettingsSnapshot>
     setLaunchAtLogin: (enabled: boolean) => Promise<SettingsSnapshot>
     setVisionModel: (modelId: string) => Promise<SettingsSnapshot>
+    setTheme: (theme: AppTheme) => Promise<SettingsSnapshot>
+    setFontFamily: (fontFamily: string) => Promise<SettingsSnapshot>
     onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void) => () => void
   }
   skills: {

@@ -167,6 +167,9 @@ const api: MickyAPI = {
       ipcRenderer.invoke('settings:set-launch-at-login', enabled),
     setVisionModel: (modelId): Promise<SettingsSnapshot> =>
       ipcRenderer.invoke('settings:set-vision-model', modelId),
+    setTheme: (theme): Promise<SettingsSnapshot> => ipcRenderer.invoke('settings:set-theme', theme),
+    setFontFamily: (fontFamily): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-font-family', fontFamily),
     onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void): (() => void) =>
       subscribe(SETTINGS_SNAPSHOT_CHANNEL, listener)
   },

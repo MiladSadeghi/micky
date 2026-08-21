@@ -3,11 +3,16 @@ import { DEFAULT_LLM_SETTINGS, type LlmSettings } from './llm'
 import { DEFAULT_TTS_SETTINGS, type TtsSettings } from './tts'
 
 export const SETTINGS_SNAPSHOT_CHANNEL = 'settings:snapshot'
+export const APPEARANCE_SNAPSHOT_CHANNEL = 'appearance:snapshot'
 
 export const DEFAULT_ASSISTANT_SHORTCUT = 'CommandOrControl+Shift+Space'
 export const DEFAULT_DICTATION_SHORTCUT = 'CommandOrControl+Shift+D'
 export const DEFAULT_WAKE_WORD_SHORTCUT = 'CommandOrControl+Shift+M'
 export const DEFAULT_VISION_MODEL_ID = 'google/gemini-2.5-flash'
+export const DEFAULT_THEME = 'dark'
+export const DEFAULT_FONT_FAMILY = 'Vazirmatn'
+
+export type AppTheme = 'light' | 'dark'
 
 export type AppSettings = {
   activeModelId: string
@@ -28,6 +33,8 @@ export type AppSettings = {
   chatHistoryEnabled: boolean
   skillsEnabled: boolean
   disabledSkillIds: string[]
+  theme: AppTheme
+  fontFamily: string
 }
 
 export type SettingsSnapshot = {
@@ -42,8 +49,12 @@ export type SettingsSnapshot = {
   visionModelId: string
   screenDisclosureAccepted: boolean
   chatHistoryEnabled: boolean
+  theme: AppTheme
+  fontFamily: string
   shortcutError: string | null
 }
+
+export type AppearanceSnapshot = Pick<SettingsSnapshot, 'theme' | 'fontFamily'>
 
 export function toSettingsSnapshot(
   settings: AppSettings,
@@ -61,8 +72,14 @@ export function toSettingsSnapshot(
     visionModelId: settings.visionModelId,
     screenDisclosureAccepted: settings.screenDisclosureAccepted,
     chatHistoryEnabled: settings.chatHistoryEnabled !== false,
+    theme: settings.theme,
+    fontFamily: settings.fontFamily,
     shortcutError
   }
+}
+
+export function toAppearanceSnapshot(settings: AppSettings): AppearanceSnapshot {
+  return { theme: settings.theme, fontFamily: settings.fontFamily }
 }
 
 export type AppSettingsPatch = Partial<Omit<AppSettings, 'endpoint' | 'llm' | 'tts'>> & {

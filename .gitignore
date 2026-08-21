@@ -63,3 +63,6 @@ Desktop.ini
 
 # Local overrides
 *.local
+
+# Licensed local font (not distributed)
+src/assets/fonts/ModamVF.woff2

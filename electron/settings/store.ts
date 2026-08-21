@@ -16,6 +16,8 @@ import {
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_THEME,
   DEFAULT_WAKE_WORD_SHORTCUT,
   DEFAULT_VISION_MODEL_ID,
   type AppSettings,
@@ -52,7 +54,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   screenDisclosureAccepted: false,
   chatHistoryEnabled: true,
   skillsEnabled: true,
-  disabledSkillIds: []
+  disabledSkillIds: [],
+  theme: DEFAULT_THEME,
+  fontFamily: DEFAULT_FONT_FAMILY
 }
 
 export class SettingsStore {
@@ -231,6 +235,8 @@ function normalizeSettings(value: unknown): AppSettings {
     chatHistoryEnabled: record.chatHistoryEnabled !== false,
     skillsEnabled: record.skillsEnabled !== false,
     disabledSkillIds: readStringArray(record.disabledSkillIds, 200, 80),
+    theme: record.theme === 'light' ? 'light' : DEFAULT_THEME,
+    fontFamily: readFontFamily(record.fontFamily),
     endpoint: {
       rule1MinTrailingSilence: readNumber(
         endpointRecord.rule1MinTrailingSilence,
@@ -264,6 +270,14 @@ function readOptionalString(value: unknown, fallback: string, max: number): stri
 function readShortcut(value: unknown, fallback: string): string {
   const shortcut = readString(value, fallback, 80)
   return shortcut.includes('+') ? shortcut : fallback
+}
+
+function readFontFamily(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_FONT_FAMILY
+  const fontFamily = value.trim().slice(0, 120)
+  return fontFamily && !/[\u0000-\u001f\u007f;{}]/.test(fontFamily)
+    ? fontFamily
+    : DEFAULT_FONT_FAMILY
 }
 
 function readStringArray(value: unknown, maxItems: number, maxLength: number): string[] {
