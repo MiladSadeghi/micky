@@ -16,3 +16,9 @@ export const INITIAL_CONVERSATION_STATUS: ConversationStatus = {
   followupUntil: null,
   followupHeard: false
 }
+
+// ASR fires on coughs and room noise too; a blip should not count as talking.
+export function hasSpokenText(text: string): boolean {
+  const trimmed = text.trim()
+  return trimmed.length >= 2 && /\p{L}/u.test(trimmed)
+}

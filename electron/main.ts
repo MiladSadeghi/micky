@@ -17,7 +17,11 @@ import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { agentStatusLabel, INITIAL_AGENT_STATUS, type AgentStatus } from '@/lib/agent'
 import { CHATS_SNAPSHOT_CHANNEL, type ChatSearchOptions, type ChatsSnapshot } from '@/lib/chats'
-import { INITIAL_CONVERSATION_STATUS, type ConversationStatus } from '@/lib/conversation'
+import {
+  hasSpokenText,
+  INITIAL_CONVERSATION_STATUS,
+  type ConversationStatus
+} from '@/lib/conversation'
 import { AUDIO_CHUNK_CHANNEL } from '@/lib/asr'
 import { OPENROUTER_KEYS_URL, isLlmProviderId, isOpenAiCompatibleProviderId } from '@/lib/llm'
 import {
@@ -58,11 +62,19 @@ import { TtsService } from './tts/service'
 import { DictationController } from './dictation/controller'
 import { FlyoverService } from './flyover/service'
 import { shouldShowWakeFlyover } from './flyover/activation'
+import {
+  canAcceptFlyoverCompose,
+  clampFlyoverDraft,
+  shouldIgnoreFlyoverSpeech,
+  FLYOVER_COMPOSE_HINT,
+  FLYOVER_TYPED_IDLE_MS
+} from './flyover/compose'
 import { ShortcutService, type ShortcutKind } from './shortcuts/service'
 import { PasteService } from './system/paste'
 import { VisionService } from './vision/service'
 import { SkillService } from './skills/service'
 import { SKILLS_SNAPSHOT_CHANNEL, type SkillsSnapshot } from '@/lib/skills'
+import { EARCON_CHANNEL, type EarconKind } from '@/lib/earcon'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL
@@ -95,9 +107,22 @@ let visionService: VisionService | null = null
 let skillService: SkillService | null = null
 let assistantFlyoverActive = false
 let assistantShortcutSilent = false
+let assistantFlyoverComposing = false
+let assistantFlyoverTyped = false
+let assistantFlyoverIdleTimer: NodeJS.Timeout | null = null
+let lastConfirmEarconTurnId: string | null = null
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal')
+
+function sendEarcon(kind: EarconKind): void {
+  const flyoverLive =
+    flyoverWindow &&
+    !flyoverWindow.isDestroyed() &&
+    (flyoverWindow.isVisible() || assistantFlyoverActive)
+  const target = flyoverLive ? flyoverWindow : mainWindow
+  if (target && !target.isDestroyed()) target.webContents.send(EARCON_CHANNEL, kind)
+}
 
 function isTrustedSender(sender: Electron.WebContents): boolean {
   return Boolean(mainWindow && !mainWindow.isDestroyed() && sender === mainWindow.webContents)
@@ -728,6 +753,10 @@ function registerIpc(): void {
   })
   ipcMain.on('flyover:cancel', (event) => {
     if (!isTrustedFlyoverSender(event.sender)) return
+    if (assistantFlyoverActive) {
+      stopAssistantFlyoverSession()
+      return
+    }
     dictationController?.cancel()
     conversation?.onWakeResume()
     speechService?.cancelSession()
@@ -735,6 +764,15 @@ function registerIpc(): void {
   })
   ipcMain.on('flyover:finish-dictation', (event) => {
     if (isTrustedFlyoverSender(event.sender)) dictationController?.finish()
+  })
+  ipcMain.on('flyover:compose-start', (event, text: unknown) => {
+    if (isTrustedFlyoverSender(event.sender) && typeof text === 'string') startFlyoverCompose(text)
+  })
+  ipcMain.on('flyover:compose-update', (event, text: unknown) => {
+    if (isTrustedFlyoverSender(event.sender) && typeof text === 'string') updateFlyoverCompose(text)
+  })
+  ipcMain.on('flyover:compose-submit', (event, text: unknown) => {
+    if (isTrustedFlyoverSender(event.sender) && typeof text === 'string') submitFlyoverCompose(text)
   })
   ipcMain.on('flyover:resolve-approval', (event, approved: unknown) => {
     if (isTrustedFlyoverSender(event.sender) && typeof approved === 'boolean') {
@@ -873,7 +911,7 @@ function createFlyoverWindow(): void {
   if (flyoverWindow && !flyoverWindow.isDestroyed()) return
   const window = new BrowserWindow({
     width: 420,
-    height: 148,
+    height: 400,
     show: false,
     frame: false,
     transparent: true,
@@ -891,12 +929,14 @@ function createFlyoverWindow(): void {
       preload: join(__dirname, 'flyover-preload.cjs'),
       sandbox: true,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      autoplayPolicy: 'no-user-gesture-required'
     }
   })
   flyoverWindow = window
   window.setAlwaysOnTop(true, process.platform === 'darwin' ? 'status' : 'floating')
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  window.setContentProtection(true)
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => event.preventDefault())
   window.on('closed', () => {
@@ -944,19 +984,47 @@ function createTray(): void {
 function showAssistantFlyover(silent: boolean): void {
   assistantFlyoverActive = true
   assistantShortcutSilent = silent
+  assistantFlyoverComposing = false
+  assistantFlyoverTyped = false
+  clearFlyoverIdleDismiss()
   flyoverService?.show({
     mode: 'assistant',
     phase: 'listening',
     title: 'میکی',
-    text: 'گوش می‌دم…',
-    hint: 'هر وقت آماده‌ای شروع کن',
-    interactive: false
+    text: silent ? 'حرف بزن، یا بنویس…' : 'گوش می‌دم…',
+    hint: silent ? FLYOVER_COMPOSE_HINT : 'هر وقت آماده‌ای شروع کن',
+    interactive: silent,
+    canCompose: silent
   })
+}
+
+// A typed exchange has no spoken reply to wait through, so the answer would vanish
+// with the 12s listen window. Hold it open, but never leave the mic on forever.
+function clearFlyoverIdleDismiss(): void {
+  if (!assistantFlyoverIdleTimer) return
+  clearTimeout(assistantFlyoverIdleTimer)
+  assistantFlyoverIdleTimer = null
+}
+
+function armFlyoverIdleDismiss(): void {
+  clearFlyoverIdleDismiss()
+  assistantFlyoverIdleTimer = setTimeout(() => {
+    assistantFlyoverIdleTimer = null
+    stopAssistantFlyoverSession()
+  }, FLYOVER_TYPED_IDLE_MS)
+}
+
+function noteSpokenActivity(): void {
+  assistantFlyoverTyped = false
+  clearFlyoverIdleDismiss()
 }
 
 function showMissingAsrModelFlyover(): void {
   assistantFlyoverActive = false
   assistantShortcutSilent = false
+  assistantFlyoverComposing = false
+  assistantFlyoverTyped = false
+  clearFlyoverIdleDismiss()
   flyoverService?.show({
     mode: 'assistant',
     phase: 'unavailable',
@@ -972,6 +1040,9 @@ function stopAssistantFlyoverSession(): void {
   if (!assistantFlyoverActive) return
   assistantFlyoverActive = false
   assistantShortcutSilent = false
+  assistantFlyoverComposing = false
+  assistantFlyoverTyped = false
+  clearFlyoverIdleDismiss()
   flyoverService?.hide()
   conversation?.onWakeResume()
   agentService?.abort()
@@ -993,13 +1064,83 @@ function handleAssistantShortcut(): void {
   ttsService?.stop()
   conversation?.onWakeActivated()
   showAssistantFlyover(true)
+  sendEarcon('listen')
   wakeWordService?.beginExternalSession()
   void speechService?.startSession({ preroll: false, mode: 'conversation' })
 }
 
+function startFlyoverCompose(text: string): void {
+  const snapshot = flyoverService?.getSnapshot()
+  if (
+    !snapshot ||
+    !canAcceptFlyoverCompose({
+      active: assistantFlyoverActive,
+      shortcutSession: assistantShortcutSilent,
+      phase: snapshot.phase,
+      canApprove: snapshot.canApprove
+    })
+  ) {
+    return
+  }
+  const draft = clampFlyoverDraft(text)
+  clearFlyoverIdleDismiss()
+  if (!assistantFlyoverComposing) {
+    assistantFlyoverComposing = true
+    speechService?.cancelSession()
+    conversation?.holdListenWindow()
+  }
+  flyoverService?.update({
+    mode: 'assistant',
+    phase: 'composing',
+    title: 'پیام تو',
+    text: draft,
+    hint: FLYOVER_COMPOSE_HINT,
+    detail: null,
+    previewImage: null,
+    interactive: true,
+    canCompose: true
+  })
+}
+
+function updateFlyoverCompose(text: string): void {
+  if (!assistantFlyoverComposing) return
+  clearFlyoverIdleDismiss()
+  flyoverService?.update({
+    phase: 'composing',
+    title: 'پیام تو',
+    text: clampFlyoverDraft(text),
+    hint: FLYOVER_COMPOSE_HINT,
+    interactive: true,
+    canCompose: true
+  })
+}
+
+function submitFlyoverCompose(text: string): void {
+  if (!assistantFlyoverComposing) return
+  const draft = clampFlyoverDraft(text).trim()
+  if (!draft) return
+  assistantFlyoverComposing = false
+  assistantFlyoverTyped = true
+  clearFlyoverIdleDismiss()
+  flyoverService?.update({
+    phase: 'thinking',
+    title: 'میکی',
+    text: 'دارم فکر می‌کنم…',
+    hint: null,
+    interactive: assistantShortcutSilent,
+    canCompose: false
+  })
+  conversation?.onFinalTranscript(draft)
+}
+
 function handleAgentStatus(status: AgentStatus): void {
-  if (!assistantFlyoverActive) return
   const turn = status.turn
+  if (turn?.phase === 'confirm' && turn.turnId !== lastConfirmEarconTurnId) {
+    lastConfirmEarconTurnId = turn.turnId
+    sendEarcon('confirm')
+  }
+  if (turn && turn.phase !== 'confirm') lastConfirmEarconTurnId = null
+  if (!assistantFlyoverActive) return
   if (!turn) return
   if (turn.phase === 'confirm') {
     flyoverService?.show({
@@ -1010,26 +1151,30 @@ function handleAgentStatus(status: AgentStatus): void {
       hint: 'بگو آره یا نه، یا یکی از گزینه‌ها را بزن',
       detail: turn.confirmDetail,
       interactive: true,
+      canCompose: false,
       canApprove: true
     })
     return
   }
   const reply = turn.replyText.trim()
+  const phase =
+    turn.phase === 'tool'
+      ? 'tool'
+      : turn.phase === 'speaking' || (turn.phase === 'idle' && Boolean(reply))
+        ? 'reply'
+        : turn.phase === 'error'
+          ? 'error'
+          : 'thinking'
   flyoverService?.reveal({
     mode: 'assistant',
-    phase:
-      turn.phase === 'tool'
-        ? 'tool'
-        : turn.phase === 'speaking' || (turn.phase === 'idle' && Boolean(reply))
-          ? 'reply'
-          : turn.phase === 'error'
-            ? 'error'
-            : 'thinking',
+    phase,
     title: 'میکی',
     text: reply.slice(0, 700) || turn.error || agentStatusLabel(turn.phase, turn.toolName),
     hint: null,
     detail: null,
-    interactive: false,
+    ...(phase === 'reply' || phase === 'error' ? { previewImage: null } : {}),
+    interactive: assistantShortcutSilent,
+    canCompose: false,
     canApprove: false,
     canRespondToDisclosure: false,
     canFinish: false
@@ -1041,29 +1186,40 @@ function handleConversationStatus(status: ConversationStatus): void {
   if (status.mode === 'followup') {
     if (status.followupHeard) return
     const current = flyoverService?.getSnapshot()
-    if (current?.phase === 'reply' && current.text.trim()) {
-      flyoverService?.update({
-        phase: 'reply',
-        title: 'میکی',
-        hint: 'ادامه بده…',
-        interactive: false,
-        canApprove: false
-      })
-    } else {
-      flyoverService?.update({
-        phase: 'listening',
-        title: 'میکی',
-        text: 'ادامه بده…',
-        hint: null,
-        interactive: false,
-        canApprove: false
-      })
+    const compose = assistantShortcutSilent
+    const keepsReply = current?.phase === 'reply' && Boolean(current.text.trim())
+    flyoverService?.update(
+      keepsReply
+        ? {
+            phase: 'reply',
+            title: 'میکی',
+            hint: compose ? 'جواب بده یا بنویس' : 'ادامه بده…',
+            interactive: compose,
+            canCompose: compose,
+            canApprove: false
+          }
+        : {
+            phase: 'listening',
+            title: 'میکی',
+            text: compose ? 'ادامه بده، یا بنویس…' : 'ادامه بده…',
+            hint: compose ? FLYOVER_COMPOSE_HINT : null,
+            interactive: compose,
+            canCompose: compose,
+            canApprove: false
+          }
+    )
+    if (assistantFlyoverTyped && compose) {
+      conversation?.holdListenWindow()
+      armFlyoverIdleDismiss()
     }
     return
   }
-  if (status.mode === 'idle' && !speechService?.isSessionActive()) {
+  if (status.mode === 'idle' && !speechService?.isSessionActive() && !assistantFlyoverComposing) {
     assistantFlyoverActive = false
     assistantShortcutSilent = false
+    assistantFlyoverComposing = false
+    assistantFlyoverTyped = false
+    clearFlyoverIdleDismiss()
     flyoverService?.hide()
   }
 }
@@ -1096,14 +1252,22 @@ function startRuntime(): void {
     onPartialTranscript: (text, mode) => {
       if (mode === 'dictation') dictationController?.onPartial(text)
       else {
-        if (assistantFlyoverActive && conversation?.getStatus().mode !== 'confirm' && text.trim()) {
+        if (shouldIgnoreFlyoverSpeech(assistantFlyoverComposing)) return
+        if (
+          assistantFlyoverActive &&
+          conversation?.getStatus().mode !== 'confirm' &&
+          hasSpokenText(text)
+        ) {
+          noteSpokenActivity()
           flyoverService?.update({
             phase: 'listening',
             title: 'صدای تو',
             text: text.trim().slice(0, 700),
             hint: 'دارم می‌شنوم…',
             detail: null,
-            interactive: false,
+            previewImage: null,
+            interactive: assistantShortcutSilent,
+            canCompose: assistantShortcutSilent,
             canApprove: false
           })
         }
@@ -1113,12 +1277,16 @@ function startRuntime(): void {
     onFinalTranscript: (text, mode) => {
       if (mode === 'dictation') void dictationController?.onFinal(text)
       else {
+        if (shouldIgnoreFlyoverSpeech(assistantFlyoverComposing)) return
+        if (text.trim()) noteSpokenActivity()
         if (assistantFlyoverActive && conversation?.getStatus().mode !== 'confirm' && text.trim()) {
           flyoverService?.update({
             phase: 'thinking',
             title: 'میکی',
             text: 'دارم فکر می‌کنم…',
-            hint: null
+            hint: null,
+            previewImage: null,
+            canCompose: false
           })
         }
         conversation?.onFinalTranscript(text)
@@ -1247,6 +1415,9 @@ app.whenReady().then(async () => {
     interruptAssistant: () => {
       assistantFlyoverActive = false
       assistantShortcutSilent = false
+      assistantFlyoverComposing = false
+      assistantFlyoverTyped = false
+      clearFlyoverIdleDismiss()
       conversation?.onWakeResume()
       agentService?.abort()
       ttsService?.stop()
@@ -1256,7 +1427,13 @@ app.whenReady().then(async () => {
     settings: settingsStore,
     registry: globalShortcut,
     onAssistant: handleAssistantShortcut,
-    onDictation: () => void dictationController?.toggle(),
+    onDictation: () => {
+      void (async () => {
+        const starting = !dictationController?.isActive()
+        await dictationController?.toggle()
+        if (starting && dictationController?.isActive()) sendEarcon('listen')
+      })()
+    },
     onToggleWakeWord: toggleWakeWord,
     onError: (error) => {
       shortcutError = error

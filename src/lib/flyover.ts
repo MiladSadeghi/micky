@@ -1,4 +1,5 @@
 import type { AppearanceSnapshot } from './settings'
+import type { EarconKind } from './earcon'
 
 export const FLYOVER_SNAPSHOT_CHANNEL = 'flyover:snapshot'
 
@@ -13,6 +14,7 @@ export type FlyoverPhase =
   | 'capturing'
   | 'looking'
   | 'disclosure'
+  | 'composing'
   | 'reply'
   | 'done'
   | 'unavailable'
@@ -26,7 +28,9 @@ export type FlyoverSnapshot = {
   text: string
   hint: string | null
   detail: string | null
+  previewImage: string | null
   interactive: boolean
+  canCompose: boolean
   canFinish: boolean
   canApprove: boolean
   canRespondToDisclosure: boolean
@@ -41,7 +45,9 @@ export const INITIAL_FLYOVER_SNAPSHOT: FlyoverSnapshot = {
   text: '',
   hint: null,
   detail: null,
+  previewImage: null,
   interactive: false,
+  canCompose: false,
   canFinish: false,
   canApprove: false,
   canRespondToDisclosure: false,
@@ -53,10 +59,14 @@ export type FlyoverAPI = {
   getAppearance: () => Promise<AppearanceSnapshot>
   cancel: () => void
   finishDictation: () => void
+  startCompose: (text: string) => void
+  updateCompose: (text: string) => void
+  submitCompose: (text: string) => void
   resolveApproval: (approved: boolean) => void
   resolveDisclosure: (accepted: boolean) => void
   openMain: () => void
   openModels: () => void
   onSnapshotChange: (listener: (snapshot: FlyoverSnapshot) => void) => () => void
   onAppearanceChange: (listener: (snapshot: AppearanceSnapshot) => void) => () => void
+  onEarcon: (listener: (kind: EarconKind) => void) => () => void
 }

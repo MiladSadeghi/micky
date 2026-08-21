@@ -6,6 +6,7 @@ import {
   FOLLOWUP_WINDOW_MS,
   INITIAL_CONVERSATION_STATUS,
   CONVERSATION_STATUS_CHANNEL,
+  hasSpokenText,
   type ConversationStatus
 } from '@/lib/conversation'
 import type { AgentService } from '../agent/service'
@@ -29,11 +30,6 @@ type ConversationControllerOptions = {
   getWindow: () => BrowserWindow | null
   onStatusChange?: (status: ConversationStatus) => void
   shouldUseVoice?: () => boolean
-}
-
-function hasSpokenText(text: string): boolean {
-  const trimmed = text.trim()
-  return trimmed.length >= 2 && /\p{L}/u.test(trimmed)
 }
 
 export class ConversationController {
@@ -115,6 +111,17 @@ export class ConversationController {
 
   onPartialTranscript(text: string): void {
     if ((this.#mode !== 'followup' && this.#mode !== 'confirm') || !hasSpokenText(text)) return
+    this.#clearFollowupTimer()
+    if (this.#status.followupHeard) return
+    this.#setStatus({
+      mode: this.#mode,
+      followupUntil: null,
+      followupHeard: true
+    })
+  }
+
+  holdListenWindow(): void {
+    if (this.#mode !== 'followup' && this.#mode !== 'confirm') return
     this.#clearFollowupTimer()
     if (this.#status.followupHeard) return
     this.#setStatus({

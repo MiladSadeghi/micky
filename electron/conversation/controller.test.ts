@@ -132,6 +132,26 @@ test('returns to wake-word listening when followup stays silent', async (t) => {
   assert.equal(harness.wake.resumed, 1)
 })
 
+test('holds the followup window while the user types a draft', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const harness = createHarness()
+  harness.controller.onFinalTranscript('سلام')
+  await waitForFollowup(harness)
+
+  harness.controller.holdListenWindow()
+  assert.equal(harness.controller.getStatus().mode, 'followup')
+  assert.equal(harness.controller.getStatus().followupHeard, true)
+
+  t.mock.timers.tick(FOLLOWUP_WINDOW_MS + 1_000)
+  assert.equal(harness.controller.getStatus().mode, 'followup')
+  assert.equal(harness.wake.resumed, 0)
+
+  harness.controller.onFinalTranscript('فردا چی کار داریم')
+  await waitForFollowup(harness, 2)
+  assert.equal(harness.controller.getStatus().mode, 'followup')
+  assert.deepEqual(harness.tts.spoken, ['جواب میکی', 'جواب میکی'])
+})
+
 test('ignores empty ASR silence endpoints and keeps the followup window', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const harness = createHarness()

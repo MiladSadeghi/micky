@@ -239,9 +239,102 @@
     -webkit-app-region: no-drag;
   }
 
+  .flyover-orb-well {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 9%, transparent);
+  }
+
+  .flyover-orb-well[data-active='true'] {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--foreground) 16%, transparent),
+      0 0 0 4px color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+
+  .flyover-copy {
+    max-height: 9.5rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overflow-anchor: none;
+    scrollbar-width: none;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+
+  .flyover-copy::-webkit-scrollbar {
+    display: none;
+  }
+
+  .flyover-copy[data-overflow='true'] {
+    mask-image: linear-gradient(to bottom, transparent, black 0.9rem, black 100%);
+  }
+
+  .flyover-surface:has(.flyover-preview) .flyover-copy {
+    max-height: 5.75rem;
+  }
+
+  .flyover-compose {
+    display: block;
+    width: 100%;
+    resize: none;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    outline: none;
+    caret-color: var(--foreground);
+    -webkit-app-region: no-drag;
+  }
+
+  .flyover-compose::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  /* Stand-in caret so an untouched card still reads as somewhere you can type. */
+  .flyover-caret {
+    display: inline-block;
+    width: 0.075rem;
+    height: 1.05em;
+    margin-inline-start: 0.2rem;
+    background: var(--foreground);
+    border-radius: 1px;
+    vertical-align: -0.15em;
+    animation: flyover-caret-blink 1.15s step-end infinite;
+  }
+
+  @keyframes flyover-caret-blink {
+    0%,
+    100% {
+      opacity: 0.85;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flyover-caret {
+      animation: none;
+      opacity: 0.6;
+    }
+  }
+
+  /* Invisible key catcher: the card keeps showing live speech until you type. */
+  .flyover-compose-capture {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .flyover-status-dot[data-active='true'] {
     animation: flyover-pulse 1.6s ease-in-out infinite;
     background: var(--foreground);
+  }
+
+  .flyover-preview {
+    animation: flyover-preview-in 220ms ease-out;
   }
 
   .orb-trigger {
@@ -337,6 +430,18 @@
       0 1rem 3rem color-mix(in srgb, black 18%, transparent),
       inset 0 1px color-mix(in srgb, var(--foreground) 5%, transparent);
     backdrop-filter: blur(1.1rem);
+  }
+}
+
+@keyframes flyover-preview-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -587,7 +692,9 @@
   .orb-trigger::after,
   .transcript-word-enter,
   .tool-activity-spinner,
-  .orb-followup-timer circle {
+  .orb-followup-timer circle,
+  .flyover-preview,
+  .flyover-status-dot {
     animation: none !important;
   }
 }

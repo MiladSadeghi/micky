@@ -3,18 +3,45 @@ import test from 'node:test'
 import type { BrowserWindow } from 'electron'
 import { FlyoverService } from './service'
 
-function fakeWindow(): BrowserWindow {
-  return {
+function fakeWindow(): BrowserWindow & {
+  showCount: number
+  showInactiveCount: number
+  hideCount: number
+} {
+  let visible = false
+  let focusable = false
+  const window = {
+    showCount: 0,
+    showInactiveCount: 0,
+    hideCount: 0,
     isDestroyed: () => false,
-    setFocusable: () => undefined,
-    show: () => undefined,
-    showInactive: () => undefined,
-    hide: () => undefined,
+    isVisible: () => visible,
+    isFocusable: () => focusable,
+    setFocusable: (value: boolean) => {
+      focusable = value
+    },
+    show: () => {
+      visible = true
+      window.showCount += 1
+    },
+    showInactive: () => {
+      visible = true
+      window.showInactiveCount += 1
+    },
+    hide: () => {
+      visible = false
+      window.hideCount += 1
+    },
     webContents: {
       once: () => undefined,
       send: () => undefined
     }
-  } as unknown as BrowserWindow
+  }
+  return window as unknown as BrowserWindow & {
+    showCount: number
+    showInactiveCount: number
+    hideCount: number
+  }
 }
 
 test('shows compact state and clears interactive actions when hidden', () => {
@@ -86,4 +113,91 @@ test('reveals an assistant reply after screen capture hides the flyover', () => 
     },
     { visible: true, mode: 'assistant', phase: 'reply', text: 'جواب نهایی' }
   )
+})
+
+test('keeps the window shown across in-place updates and preserves a screen preview', () => {
+  const window = fakeWindow()
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(window)
+  service.show({
+    mode: 'assistant',
+    phase: 'thinking',
+    title: 'میکی',
+    text: 'دارم فکر می‌کنم…'
+  })
+  assert.equal(window.showCount, 0)
+  assert.equal(window.showInactiveCount, 1)
+
+  service.reveal({
+    mode: 'screen',
+    phase: 'looking',
+    title: 'دیدن صفحه',
+    text: 'دارم نگاه می‌کنم…',
+    previewImage: 'data:image/jpeg;base64,abc'
+  })
+  service.update({
+    mode: 'assistant',
+    phase: 'tool',
+    title: 'میکی',
+    text: 'دارم صفحه رو نگاه می‌کنم…'
+  })
+
+  assert.equal(window.showCount, 0)
+  assert.equal(window.showInactiveCount, 1)
+  assert.equal(window.hideCount, 0)
+  assert.equal(service.getSnapshot().visible, true)
+  assert.equal(service.getSnapshot().previewImage, 'data:image/jpeg;base64,abc')
+  assert.equal(service.getSnapshot().phase, 'tool')
+})
+
+test('clears the screen preview when the assistant reply starts', () => {
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(fakeWindow())
+  service.show({
+    mode: 'screen',
+    phase: 'looking',
+    previewImage: 'data:image/jpeg;base64,abc'
+  })
+  service.reveal({
+    mode: 'assistant',
+    phase: 'reply',
+    title: 'میکی',
+    text: 'روی صفحه یه مرورگر بازه.',
+    previewImage: null
+  })
+  assert.equal(service.getSnapshot().previewImage, null)
+  assert.equal(service.getSnapshot().phase, 'reply')
+})
+
+test('clears the screen preview when the flyover hides', () => {
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(fakeWindow())
+  service.show({
+    mode: 'screen',
+    phase: 'looking',
+    previewImage: 'data:image/jpeg;base64,abc'
+  })
+  service.hide()
+  assert.equal(service.getSnapshot().previewImage, null)
+  assert.equal(service.getSnapshot().canCompose, false)
+})
+
+test('focuses an interactive shortcut listen instead of showing inactive', () => {
+  const window = fakeWindow()
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(window)
+  service.show({
+    mode: 'assistant',
+    phase: 'listening',
+    title: 'میکی',
+    text: 'گوش می‌دم…',
+    interactive: true,
+    canCompose: true
+  })
+  assert.equal(window.showCount, 1)
+  assert.equal(window.showInactiveCount, 0)
+  assert.equal(service.getSnapshot().canCompose, true)
+  assert.equal(service.getSnapshot().interactive, true)
+  service.hide()
+  assert.equal(service.getSnapshot().canCompose, false)
 })

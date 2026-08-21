@@ -16,6 +16,7 @@ import {
 } from '@/lib/asr'
 import { CONVERSATION_STATUS_CHANNEL, type ConversationStatus } from '@/lib/conversation'
 import { CHATS_SNAPSHOT_CHANNEL, type ChatSearchOptions, type ChatsSnapshot } from '@/lib/chats'
+import { EARCON_CHANNEL, type EarconKind } from '@/lib/earcon'
 import type { MickyAPI } from '@/lib/desktop-api'
 import {
   LLM_SNAPSHOT_CHANNEL,
@@ -189,7 +190,9 @@ const api: MickyAPI = {
       process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux',
     isDevelopment: Boolean(process.defaultApp || process.env.ELECTRON_RENDERER_URL),
     setWindowMode: (mode): Promise<void> => ipcRenderer.invoke('app:set-window-mode', mode),
-    onOpenSettings: (listener): (() => void) => subscribe('app:open-settings', listener)
+    onOpenSettings: (listener): (() => void) => subscribe('app:open-settings', listener),
+    onEarcon: (listener: (kind: EarconKind) => void): (() => void) =>
+      subscribe(EARCON_CHANNEL, listener)
   },
   llm: {
     getSnapshot: (): Promise<LlmSnapshot> => ipcRenderer.invoke('llm:get-snapshot'),

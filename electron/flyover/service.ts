@@ -51,7 +51,9 @@ export class FlyoverService {
       ...this.#snapshot,
       visible: false,
       phase: 'hidden',
+      previewImage: null,
       interactive: false,
+      canCompose: false,
       canFinish: false,
       canApprove: false,
       canRespondToDisclosure: false,
@@ -93,10 +95,17 @@ export class FlyoverService {
     const window = this.#window
     if (!window || window.isDestroyed()) return
     this.positionWindow(window)
-    window.setFocusable(this.#snapshot.interactive)
+    const focusable = this.#snapshot.interactive
+    const wasFocusable = window.isFocusable()
+    const alreadyVisible = window.isVisible()
+    if (wasFocusable !== focusable) window.setFocusable(focusable)
     this.#emit()
-    if (this.#snapshot.interactive) window.show()
-    else window.showInactive()
+    if (!alreadyVisible) {
+      if (focusable) window.show()
+      else window.showInactive()
+      return
+    }
+    if (focusable && !wasFocusable) window.show()
   }
 
   #emit(): void {

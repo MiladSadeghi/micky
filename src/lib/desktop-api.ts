@@ -9,6 +9,7 @@ import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
 import type { TtsPlayback, TtsProviderId, TtsSnapshot, TtsStatus } from '@/lib/tts'
 import type { DesktopPlatform } from '@/lib/shortcuts'
 import type { SkillsSnapshot } from '@/lib/skills'
+import type { EarconKind } from '@/lib/earcon'
 
 export type MickyAPI = {
   wakeWord: {
@@ -105,6 +106,7 @@ export type MickyAPI = {
     isDevelopment: boolean
     setWindowMode: (mode: 'home' | 'settings') => Promise<void>
     onOpenSettings: (listener: () => void) => () => void
+    onEarcon: (listener: (kind: EarconKind) => void) => () => void
   }
   llm: {
     getSnapshot: () => Promise<LlmSnapshot>

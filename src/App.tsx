@@ -35,6 +35,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { useTurnCues } from '@/hooks/use-turn-cues'
 import { useTts } from '@/hooks/use-tts'
 import { useWakeWord } from '@/hooks/use-wake-word'
+import { useEarcons } from '@/hooks/use-earcons'
 import { cn } from '@/lib/utils'
 
 const PHASE_LABEL = {
@@ -119,6 +120,7 @@ function App(): React.JSX.Element {
   const tts = useTts()
   const onboardingActive = soul?.onboardingCompleted === false
   useTurnCues(conversation)
+  useEarcons(window.api.app.onEarcon)
   useEffect(() => window.api.app.onOpenSettings(() => setScreen('settings')), [])
   useEffect(() => {
     void window.api.app.setWindowMode(

@@ -94,3 +94,12 @@ export function playListenChime(): void {
   }
   window.setTimeout(trigger, waitMs)
 }
+
+export function playConfirmChime(): void {
+  playWhenReady((context) => {
+    const now = context.currentTime
+    playTone(context, 659.25, now, 0.09, 0.048)
+    playTone(context, 830.61, now + 0.09, 0.12, 0.06)
+    playTone(context, 987.77, now + 0.2, 0.2, 0.05)
+  })
+}
