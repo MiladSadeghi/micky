@@ -8,23 +8,27 @@ import {
   Download,
   Ear,
   ExternalLink,
+  FileTerminal,
   History,
   Globe2,
   Keyboard,
+  LockKeyhole,
   Mic,
+  Monitor,
   Palette,
   Puzzle,
   RefreshCw,
   RotateCcw,
   Sparkles,
+  ShieldCheck,
   Trash2,
   Volume2,
   X
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AsrModelView, ModelsSnapshot } from '@/lib/asr'
 import type { TtsSnapshot } from '@/lib/tts'
-import type { SettingsSnapshot } from '@/lib/settings'
+import type { ScreenAccessStatus, SettingsSnapshot } from '@/lib/settings'
 import type { LlmSnapshot } from '@/lib/llm'
 import type { ChatsSnapshot } from '@/lib/chats'
 import type { SkillsSnapshot } from '@/lib/skills'
@@ -63,6 +67,14 @@ import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
 import { LlmSettings } from '@/components/llm-settings'
 import { MickyLogo } from '@/components/micky-logo'
 import { PersonalitySettings } from '@/components/personality-settings'
@@ -102,6 +114,7 @@ type SettingsTab =
   | 'search'
   | 'soul'
   | 'skills'
+  | 'tools'
   | 'history'
   | 'shortcuts'
   | 'version'
@@ -123,6 +136,10 @@ const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
   skills: {
     title: 'مهارت‌ها',
     description: 'راهنماهای نصب‌شده‌ای که میکی فقط هنگام نیاز بارگذاری می‌کند'
+  },
+  tools: {
+    title: 'ابزارها و دسترسی‌ها',
+    description: 'کنترل دیدن صفحه، کار با فایل‌ها و سیاست تأیید کارهای حساس'
   },
   history: {
     title: 'گفتگوها',
@@ -151,6 +168,7 @@ const CORE_SETTINGS_TABS = [
 const CAPABILITY_SETTINGS_TABS = [
   { id: 'soul', label: 'شخصیت', icon: Sparkles },
   { id: 'skills', label: 'مهارت‌ها', icon: Puzzle },
+  { id: 'tools', label: 'ابزارها', icon: ShieldCheck },
   { id: 'search', label: 'جستجوی وب', icon: Globe2 }
 ] satisfies ReadonlyArray<{ id: SettingsTab; label: string; icon: typeof Ear }>
 
@@ -300,7 +318,6 @@ export function SettingsView({
 
         <SettingsTabPanel tab="llm">
           <LlmSettings snapshot={llm} />
-          {settings && llm ? <VisionModelSetting settings={settings} llm={llm} /> : null}
         </SettingsTabPanel>
 
         <SettingsTabPanel tab="tts">
@@ -314,6 +331,10 @@ export function SettingsView({
 
         <SettingsTabPanel tab="skills">
           <SkillsSettings snapshot={skills} />
+        </SettingsTabPanel>
+
+        <SettingsTabPanel tab="tools">
+          {settings ? <ToolsAndAccessSettings settings={settings} llm={llm} /> : null}
         </SettingsTabPanel>
 
         <SettingsTabPanel tab="search">
@@ -338,7 +359,6 @@ export function SettingsView({
 
         <SettingsTabPanel tab="about">
           <HowMickyWorks />
-          <SystemToolsSetting enabled={settings?.systemToolsEnabled !== false} />
           {window.api.app.isDevelopment ? <DeveloperSettings /> : null}
         </SettingsTabPanel>
       </Tabs>
@@ -496,10 +516,19 @@ function ShortcutSettings({ settings }: { settings: SettingsSnapshot }): React.J
             <ShortcutField
               id="assistant-shortcut"
               label="دستیار میکی"
-              description="میکی را باز می‌کند و مستقیم شروع به شنیدن می‌کند"
+              description="میکی را باز می‌کند، گفتگوی فعلی را ادامه می‌دهد و شروع به شنیدن می‌کند"
               value={settings.assistantShortcut}
               platform={platform}
               onChange={(value) => window.api.settings.setShortcut('assistant', value)}
+            />
+            <Separator />
+            <ShortcutField
+              id="new-chat-shortcut"
+              label="گفتگوی تازه"
+              description="گفتگوی فعلی را می‌بندد و میکی را با زمینه‌ای خالی باز می‌کند"
+              value={settings.newChatShortcut}
+              platform={platform}
+              onChange={(value) => window.api.settings.setShortcut('newChat', value)}
             />
             <Separator />
             <ShortcutField
@@ -809,6 +838,111 @@ function SettingToggle({
   )
 }
 
+function ToolsAndAccessSettings({
+  settings,
+  llm
+}: {
+  settings: SettingsSnapshot
+  llm: LlmSnapshot | null
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-3">
+      <ScreenAccessSetting settings={settings} />
+      {llm ? <VisionModelSetting settings={settings} llm={llm} /> : null}
+      <SystemToolsSetting enabled={settings.systemToolsEnabled} />
+    </div>
+  )
+}
+
+function ScreenAccessSetting({ settings }: { settings: SettingsSnapshot }): React.JSX.Element {
+  const [status, setStatus] = useState<ScreenAccessStatus>('unknown')
+  const platform = window.api.app.platform
+
+  useEffect(() => {
+    let active = true
+    const refresh = (): void => {
+      void window.api.settings.getScreenAccessStatus().then((next) => {
+        if (active) setStatus(next)
+      })
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => {
+      active = false
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
+
+  const statusLabel =
+    status === 'granted'
+      ? 'اجازه سیستم داده شده'
+      : status === 'not-required'
+        ? 'آماده استفاده'
+        : status === 'denied'
+          ? 'اجازه سیستم خاموش است'
+          : status === 'restricted'
+            ? 'دسترسی محدود شده'
+            : status === 'not-determined'
+              ? 'هنوز اجازه داده نشده'
+              : 'در حال بررسی دسترسی'
+  const statusVariant: React.ComponentProps<typeof Badge>['variant'] =
+    status === 'granted' || status === 'not-required'
+      ? 'secondary'
+      : status === 'denied' || status === 'restricted'
+        ? 'destructive'
+        : 'outline'
+  const needsSystemPermission =
+    platform === 'macos' && status !== 'granted' && status !== 'not-required'
+
+  return (
+    <Card size="sm" className="bg-card/30">
+      <CardHeader>
+        <CardTitle id="screen-access-label">دیدن صفحه</CardTitle>
+        <CardDescription>
+          فقط وقتی خودت مستقیم بخواهی، از نمایشگر فعال یک تصویر می‌گیرد و آن را برای تحلیل می‌فرستد
+        </CardDescription>
+        <CardAction>
+          <Switch
+            dir="ltr"
+            checked={settings.screenAccessEnabled}
+            aria-labelledby="screen-access-label"
+            onCheckedChange={(enabled) => void window.api.settings.setScreenAccessEnabled(enabled)}
+          />
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 p-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-background text-muted-foreground">
+              <Monitor className="size-4" aria-hidden="true" />
+            </span>
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="text-xs font-medium">دسترسی ضبط صفحه در سیستم</span>
+              <Badge variant={statusVariant}>{statusLabel}</Badge>
+            </div>
+          </div>
+          {needsSystemPermission ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void window.api.settings.openScreenAccessSettings()}
+            >
+              <ExternalLink data-icon="inline-start" />
+              تنظیمات سیستم
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+      <CardFooter className="gap-2 text-start">
+        <LockKeyhole className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <p className="text-xs leading-5 text-muted-foreground">
+          تصویر ذخیره نمی‌شود و در هر درخواست فقط یک بار میکی می‌تواند صفحه را ببیند
+        </p>
+      </CardFooter>
+    </Card>
+  )
+}
+
 function VisionModelSetting({
   settings,
   llm
@@ -819,23 +953,31 @@ function VisionModelSetting({
   const models = llm.catalog.filter((model) => model.inputModalities.includes('image'))
   if (models.length === 0) return <></>
   return (
-    <article className="flex flex-col gap-2 rounded-xl border border-border/60 bg-card/30 px-3.5 py-3 text-start">
-      <h2 className="text-sm font-medium">مدل دیدن صفحه</h2>
-      <p className="text-[0.68rem] leading-5 text-muted-foreground">
-        وقتی مدل اصلی تصویر نمی‌پذیرد، میکی از این مدل استفاده می‌کند
-      </p>
-      <select
-        className="h-9 rounded-lg border border-input bg-background px-2 text-xs"
-        value={settings.visionModelId}
-        onChange={(event) => void window.api.settings.setVisionModel(event.target.value)}
-      >
-        {models.map((model) => (
-          <option key={model.id} value={model.id}>
-            {model.label}
-          </option>
-        ))}
-      </select>
-    </article>
+    <Card size="sm" className="bg-card/30">
+      <CardHeader>
+        <CardTitle>مدل دیدن صفحه</CardTitle>
+        <CardDescription>تصویر صفحه فقط برای این مدل فرستاده می‌شود</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Select
+          value={settings.visionModelId}
+          onValueChange={(value) => value && void window.api.settings.setVisionModel(value)}
+        >
+          <SelectTrigger className="w-full" aria-label="مدل دیدن صفحه">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {models.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -874,9 +1016,9 @@ function SystemToolsSetting({ enabled }: { enabled: boolean }): React.JSX.Elemen
   return (
     <Card size="sm" className="bg-card/30">
       <CardHeader>
-        <CardTitle id="system-tools-label">دسترسی به فایل‌ها و دستورها</CardTitle>
+        <CardTitle id="system-tools-label">فایل‌ها، برنامه‌ها و دستورها</CardTitle>
         <CardDescription>
-          خواندن فایل، جستجو، بازکردن برنامه و اجرای دستور؛ کارهای حساس همیشه تأیید می‌خواهند
+          خواندن و جستجوی فایل، بازکردن برنامه، نوشتن فایل و اجرای دستورهای ترمینال
         </CardDescription>
         <CardAction>
           <Switch
@@ -887,7 +1029,58 @@ function SystemToolsSetting({ enabled }: { enabled: boolean }): React.JSX.Elemen
           />
         </CardAction>
       </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3">
+          <ToolPolicyItem
+            icon={FileTerminal}
+            title="کارهای عادی"
+            description="خواندن فایل و دستورهای بی‌خطر در مسیرهای مجاز مستقیم انجام می‌شوند"
+            badge="بدون تأیید اضافه"
+          />
+          <Separator />
+          <ToolPolicyItem
+            icon={ShieldCheck}
+            title="کارهای حساس"
+            description="دستورهای تغییردهنده، حذف، نصب و دسترسی شبکه فقط بعد از بله گفتن تو اجرا می‌شوند"
+            badge="نیازمند تأیید"
+          />
+          <Separator />
+          <ToolPolicyItem
+            icon={LockKeyhole}
+            title="مرزهای ثابت"
+            description="رمزها، کلیدها، داده مرورگر، مسیرهای محافظت‌شده و sudo همیشه مسدودند"
+            badge="همیشه مسدود"
+          />
+        </div>
+      </CardContent>
     </Card>
+  )
+}
+
+function ToolPolicyItem({
+  icon: Icon,
+  title,
+  description,
+  badge
+}: {
+  icon: typeof ShieldCheck
+  title: string
+  description: string
+  badge: string
+}): React.JSX.Element {
+  return (
+    <div className="flex items-start gap-3 text-start">
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-1.5">
+          <h3 className="text-xs font-medium">{title}</h3>
+          <Badge variant="outline">{badge}</Badge>
+        </div>
+        <p className="text-[0.68rem] leading-5 text-muted-foreground">{description}</p>
+      </div>
+    </div>
   )
 }
 

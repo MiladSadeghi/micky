@@ -8,6 +8,8 @@ test('accepts explicit Persian and English screen requests', () => {
   assert.equal(hasExplicitScreenIntent('بگو روی صفحه چی هست'), true)
   assert.equal(hasExplicitScreenIntent('look at my screen and explain this'), true)
   assert.equal(hasExplicitScreenIntent('الان چی می‌بینی؟'), true)
+  assert.equal(hasExplicitScreenIntent('میشه اینو ببینی و بگی مشکلش چیه'), true)
+  assert.equal(hasExplicitScreenIntent('این رو ببین'), true)
   assert.equal(hasExplicitScreenIntent('what do you see now?'), true)
 })
 

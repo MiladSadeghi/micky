@@ -52,6 +52,8 @@ import {
   type UserProfileDraft
 } from '@/lib/soul'
 import { isWakeWordAudioPayload } from '@/lib/wake-word'
+import { FLYOVER_WINDOW_SIZES, getFlyoverLayout } from '@/lib/flyover-layout'
+import type { FlyoverSnapshot } from '@/lib/flyover'
 import { AgentService } from './agent/service'
 import { ChatStore } from './chats/store'
 import { AudioRouter } from './audio-router'
@@ -67,7 +69,12 @@ import { WakeWordService } from './wake-word/service'
 import { TtsService } from './tts/service'
 import { DictationController } from './dictation/controller'
 import { FlyoverService } from './flyover/service'
-import { assistantShortcutAction, shouldShowWakeFlyover } from './flyover/activation'
+import { getFlyoverConversationPreview } from './flyover/context'
+import {
+  assistantShortcutAction,
+  mainWindowFocusAction,
+  shouldShowWakeFlyover
+} from './flyover/activation'
 import {
   canAcceptFlyoverCompose,
   clampFlyoverDraft,
@@ -193,13 +200,17 @@ function setMainWindowMode(mode: MainWindowMode): void {
   if (mode === 'home') window.setAspectRatio(COMPANION_WIDTH / COMPANION_HEIGHT)
 }
 
-function positionFlyover(window: BrowserWindow): void {
+function positionFlyover(window: BrowserWindow, snapshot: FlyoverSnapshot): void {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
-  const [width] = window.getSize()
   const area = process.platform === 'darwin' ? display.bounds : display.workArea
+  const content = snapshot.detail ? `${snapshot.text}\n${snapshot.detail}` : snapshot.text
+  const desired = FLYOVER_WINDOW_SIZES[getFlyoverLayout(content)]
+  const margin = process.platform === 'darwin' ? 6 : 10
+  const width = Math.min(desired.width, area.width - margin * 2)
+  const height = Math.min(desired.height, area.height - margin * 2)
   const x = Math.round(area.x + (area.width - width) / 2)
-  const y = process.platform === 'darwin' ? display.bounds.y + 6 : display.workArea.y + 10
-  window.setPosition(x, y, false)
+  const y = area.y + margin
+  window.setBounds({ x, y, width, height }, true)
 }
 
 function emitSettingsSnapshot(): void {
@@ -628,6 +639,22 @@ function registerIpc(): void {
     }
     return snapshot
   })
+  ipcMain.handle('settings:set-screen-access', async (event, enabled: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof enabled !== 'boolean') {
+      throw new Error('Invalid screen access setting.')
+    }
+    await settingsStore?.update({ screenAccessEnabled: enabled })
+    emitSettingsSnapshot()
+    return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
+  })
+  ipcMain.handle('settings:get-screen-access-status', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted screen access request.')
+    return visionService?.getAccessStatus() ?? 'unknown'
+  })
+  ipcMain.handle('settings:open-screen-access-settings', async (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted screen settings request.')
+    await visionService?.openAccessSettings()
+  })
   ipcMain.handle('settings:set-chat-history', async (event, enabled: unknown) => {
     if (!isTrustedSender(event.sender) || typeof enabled !== 'boolean') {
       throw new Error('Invalid chat history setting.')
@@ -640,7 +667,7 @@ function registerIpc(): void {
   ipcMain.handle('settings:set-shortcut', async (event, kind: unknown, accelerator: unknown) => {
     if (
       !isTrustedSender(event.sender) ||
-      (kind !== 'assistant' && kind !== 'dictation' && kind !== 'wakeWord') ||
+      (kind !== 'assistant' && kind !== 'newChat' && kind !== 'dictation' && kind !== 'wakeWord') ||
       typeof accelerator !== 'string'
     ) {
       throw new Error('Invalid shortcut setting.')
@@ -966,6 +993,7 @@ function createWindow(): void {
   window.on('ready-to-show', () => {
     if (!process.argv.includes('--hidden')) window.show()
   })
+  window.on('focus', handleMainWindowFocus)
 
   window.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -1101,12 +1129,16 @@ function showAssistantFlyover(silent: boolean): void {
   assistantFlyoverComposing = false
   assistantFlyoverTyped = false
   clearFlyoverIdleDismiss()
+  const activeChatId = silent ? chatStore?.getActiveChatId() : null
+  const conversationPreview = getFlyoverConversationPreview(
+    activeChatId ? (chatStore?.getChat(activeChatId, 4) ?? null) : null
+  )
   flyoverService?.show({
     mode: 'assistant',
     phase: 'listening',
-    title: 'میکی',
-    text: silent ? 'حرف بزن، یا بنویس…' : 'گوش می‌دم…',
-    hint: silent ? FLYOVER_COMPOSE_HINT : 'هر وقت آماده‌ای شروع کن',
+    title: conversationPreview?.title ?? 'میکی',
+    text: conversationPreview?.text ?? (silent ? 'حرف بزن، یا بنویس…' : 'گوش می‌دم…'),
+    hint: silent ? 'حرف بزن یا بنویس' : 'هر وقت آماده‌ای شروع کن',
     interactive: silent,
     canCompose: silent
   })
@@ -1153,13 +1185,7 @@ function showMissingAsrModelFlyover(): void {
 
 function stopAssistantFlyoverSession(): void {
   if (!assistantFlyoverActive) return
-  assistantFlyoverActive = false
-  assistantFlyoverMirroring = false
-  assistantShortcutSilent = false
-  assistantFlyoverComposing = false
-  assistantFlyoverTyped = false
-  clearFlyoverIdleDismiss()
-  flyoverService?.hide()
+  detachAssistantFlyover()
   conversation?.onWakeResume()
   agentService?.abort()
   ttsService?.stop()
@@ -1167,19 +1193,43 @@ function stopAssistantFlyoverSession(): void {
   wakeWordService?.endExternalSession()
 }
 
-function hideMirroredAssistantFlyover(): void {
-  if (!assistantFlyoverActive || !assistantFlyoverMirroring) return
+function detachAssistantFlyover(dismissedByMainWindow = false): void {
   assistantFlyoverActive = false
   assistantFlyoverMirroring = false
   assistantShortcutSilent = false
   assistantFlyoverComposing = false
   assistantFlyoverTyped = false
   clearFlyoverIdleDismiss()
-  flyoverService?.hide()
+  if (dismissedByMainWindow) flyoverService?.dismiss()
+  else flyoverService?.hide()
+}
+
+function hideMirroredAssistantFlyover(): void {
+  if (!assistantFlyoverActive || !assistantFlyoverMirroring) return
+  detachAssistantFlyover()
+}
+
+function handleMainWindowFocus(): void {
+  const action = mainWindowFocusAction({
+    flyoverVisible: flyoverService?.getSnapshot().visible ?? false,
+    assistantActive: assistantFlyoverActive,
+    assistantComposing: assistantFlyoverComposing
+  })
+  if (action === 'none') return
+  if (action === 'hide') {
+    flyoverService?.dismiss()
+    return
+  }
+  detachAssistantFlyover(true)
+  if (action === 'cancel-compose') {
+    conversation?.onWakeResume()
+    speechService?.cancelSession()
+    wakeWordService?.endExternalSession()
+  }
 }
 
 function showOngoingAssistantFlyover(): void {
-  showAssistantFlyover(false)
+  showAssistantFlyover(true)
   assistantFlyoverMirroring = true
   const conversationStatus = conversation?.getStatus() ?? INITIAL_CONVERSATION_STATUS
   if (conversationStatus.mode !== 'idle') {
@@ -1221,7 +1271,22 @@ function handleAssistantShortcut(): void {
   void speechService?.startSession({ preroll: false, mode: 'conversation' })
 }
 
-function startFlyoverCompose(text: string): void {
+function handleNewChatShortcut(): void {
+  dictationController?.cancel()
+  detachAssistantFlyover()
+  conversation?.startFresh()
+  wakeWordService?.endExternalSession()
+  if (!modelRegistry?.hasInstalledModel()) {
+    showMissingAsrModelFlyover()
+    return
+  }
+  showAssistantFlyover(true)
+  sendEarcon('listen')
+  wakeWordService?.beginExternalSession()
+  void speechService?.startSession({ preroll: false, mode: 'conversation' })
+}
+
+function startFlyoverCompose(_text: string): void {
   const snapshot = flyoverService?.getSnapshot()
   if (
     !snapshot ||
@@ -1234,7 +1299,6 @@ function startFlyoverCompose(text: string): void {
   ) {
     return
   }
-  const draft = clampFlyoverDraft(text)
   clearFlyoverIdleDismiss()
   if (!assistantFlyoverComposing) {
     assistantFlyoverComposing = true
@@ -1244,8 +1308,6 @@ function startFlyoverCompose(text: string): void {
   flyoverService?.update({
     mode: 'assistant',
     phase: 'composing',
-    title: 'پیام تو',
-    text: draft,
     hint: FLYOVER_COMPOSE_HINT,
     detail: null,
     previewImage: null,
@@ -1254,13 +1316,11 @@ function startFlyoverCompose(text: string): void {
   })
 }
 
-function updateFlyoverCompose(text: string): void {
+function updateFlyoverCompose(_text: string): void {
   if (!assistantFlyoverComposing) return
   clearFlyoverIdleDismiss()
   flyoverService?.update({
     phase: 'composing',
-    title: 'پیام تو',
-    text: clampFlyoverDraft(text),
     hint: FLYOVER_COMPOSE_HINT,
     interactive: true,
     canCompose: true
@@ -1345,7 +1405,7 @@ function handleConversationStatus(status: ConversationStatus): void {
         ? {
             phase: 'reply',
             title: 'میکی',
-            hint: compose ? 'جواب بده یا بنویس' : 'ادامه بده…',
+            hint: compose ? 'حرف بزن یا بنویس' : 'ادامه بده…',
             interactive: compose,
             canCompose: compose,
             canApprove: false
@@ -1353,8 +1413,8 @@ function handleConversationStatus(status: ConversationStatus): void {
         : {
             phase: 'listening',
             title: 'میکی',
-            text: compose ? 'ادامه بده، یا بنویس…' : 'ادامه بده…',
-            hint: compose ? FLYOVER_COMPOSE_HINT : null,
+            text: compose ? 'حرف بزن یا بنویس…' : 'ادامه بده…',
+            hint: null,
             interactive: compose,
             canCompose: compose,
             canApprove: false
@@ -1424,7 +1484,8 @@ function startRuntime(): void {
             detail: null,
             previewImage: null,
             interactive: assistantShortcutSilent,
-            canCompose: assistantShortcutSilent,
+            // Once speech wins the turn, give the live transcript the whole copy area.
+            canCompose: false,
             canApprove: false
           })
         }
@@ -1607,6 +1668,7 @@ app.whenReady().then(async () => {
     settings: settingsStore,
     registry: globalShortcut,
     onAssistant: handleAssistantShortcut,
+    onNewChat: handleNewChatShortcut,
     onDictation: () => {
       void (async () => {
         const starting = !dictationController?.isActive()

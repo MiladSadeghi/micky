@@ -5,9 +5,23 @@ const STRONG_LTR =
   /[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u
 
 export function detectTextDirection(text: string, fallback: TextDirection = 'rtl'): TextDirection {
-  for (const char of text) {
-    if (STRONG_RTL.test(char)) return 'rtl'
-    if (STRONG_LTR.test(char)) return 'ltr'
+  let rtlWords = 0
+  let ltrWords = 0
+
+  for (const word of text.match(/\S+/gu) ?? []) {
+    let rtlCharacters = 0
+    let ltrCharacters = 0
+
+    for (const character of word) {
+      if (STRONG_RTL.test(character)) rtlCharacters += 1
+      else if (STRONG_LTR.test(character)) ltrCharacters += 1
+    }
+
+    if (rtlCharacters > ltrCharacters) rtlWords += 1
+    else if (ltrCharacters > rtlCharacters) ltrWords += 1
   }
+
+  if (rtlWords > ltrWords) return 'rtl'
+  if (ltrWords > rtlWords) return 'ltr'
   return fallback
 }

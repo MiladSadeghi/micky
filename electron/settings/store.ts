@@ -17,6 +17,7 @@ import {
 } from '@/lib/llm'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
+  DEFAULT_NEW_CHAT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
   DEFAULT_AUDIO_DEVICE_ID,
   DEFAULT_FONT_FAMILY,
@@ -53,7 +54,9 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   webSearch: { ...DEFAULT_WEB_SEARCH_SETTINGS, enabledProviders: [] },
   onboardingCompleted: false,
   systemToolsEnabled: true,
+  screenAccessEnabled: true,
   assistantShortcut: DEFAULT_ASSISTANT_SHORTCUT,
+  newChatShortcut: DEFAULT_NEW_CHAT_SHORTCUT,
   dictationShortcut: DEFAULT_DICTATION_SHORTCUT,
   wakeWordShortcut: DEFAULT_WAKE_WORD_SHORTCUT,
   dictationAiCleanup: true,
@@ -133,6 +136,7 @@ function cloneSettings(settings: AppSettings): AppSettings {
       enabledProviders: [...settings.webSearch.enabledProviders]
     },
     systemToolsEnabled: settings.systemToolsEnabled !== false,
+    screenAccessEnabled: settings.screenAccessEnabled !== false,
     disabledSkillIds: [...settings.disabledSkillIds]
   }
 }
@@ -256,7 +260,9 @@ function normalizeSettings(value: unknown): AppSettings {
     wakeWordEnabled: record.wakeWordEnabled !== false,
     onboardingCompleted: record.onboardingCompleted === true,
     systemToolsEnabled: record.systemToolsEnabled !== false,
+    screenAccessEnabled: record.screenAccessEnabled !== false,
     assistantShortcut: readShortcut(record.assistantShortcut, DEFAULT_ASSISTANT_SHORTCUT),
+    newChatShortcut: readShortcut(record.newChatShortcut, DEFAULT_NEW_CHAT_SHORTCUT),
     dictationShortcut: readShortcut(record.dictationShortcut, DEFAULT_DICTATION_SHORTCUT),
     wakeWordShortcut: readShortcut(record.wakeWordShortcut, DEFAULT_WAKE_WORD_SHORTCUT),
     dictationAiCleanup: record.dictationAiCleanup !== false,

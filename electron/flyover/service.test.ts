@@ -7,6 +7,7 @@ function fakeWindow(): BrowserWindow & {
   showCount: number
   showInactiveCount: number
   hideCount: number
+  focusCount: number
 } {
   let visible = false
   let focusable = false
@@ -14,6 +15,7 @@ function fakeWindow(): BrowserWindow & {
     showCount: 0,
     showInactiveCount: 0,
     hideCount: 0,
+    focusCount: 0,
     isDestroyed: () => false,
     isVisible: () => visible,
     isFocusable: () => focusable,
@@ -32,6 +34,9 @@ function fakeWindow(): BrowserWindow & {
       visible = false
       window.hideCount += 1
     },
+    focus: () => {
+      window.focusCount += 1
+    },
     webContents: {
       once: () => undefined,
       send: () => undefined
@@ -41,6 +46,7 @@ function fakeWindow(): BrowserWindow & {
     showCount: number
     showInactiveCount: number
     hideCount: number
+    focusCount: number
   }
 }
 
@@ -113,6 +119,25 @@ test('reveals an assistant reply after screen capture hides the flyover', () => 
     },
     { visible: true, mode: 'assistant', phase: 'reply', text: 'جواب نهایی' }
   )
+})
+
+test('keeps a main-window dismissal hidden until a new flyover session starts', () => {
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(fakeWindow())
+  service.show({
+    mode: 'assistant',
+    phase: 'thinking',
+    title: 'میکی',
+    text: 'دارم فکر می‌کنم…'
+  })
+
+  service.dismiss()
+  service.reveal({ phase: 'reply', text: 'جواب آماده است.' })
+  assert.equal(service.getSnapshot().visible, false)
+  assert.equal(service.getSnapshot().text, 'جواب آماده است.')
+
+  service.show({ mode: 'assistant', phase: 'listening', text: 'گوش می‌دم…' })
+  assert.equal(service.getSnapshot().visible, true)
 })
 
 test('keeps the window shown across in-place updates and preserves a screen preview', () => {
@@ -200,4 +225,27 @@ test('focuses an interactive shortcut listen instead of showing inactive', () =>
   assert.equal(service.getSnapshot().interactive, true)
   service.hide()
   assert.equal(service.getSnapshot().canCompose, false)
+})
+
+test('returns focus when the composer becomes available after a reply', () => {
+  const window = fakeWindow()
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(window)
+  service.show({
+    mode: 'assistant',
+    phase: 'thinking',
+    title: 'میکی',
+    text: 'دارم فکر می‌کنم…',
+    interactive: true,
+    canCompose: false
+  })
+
+  service.update({
+    phase: 'reply',
+    text: 'جواب آماده است.',
+    canCompose: true
+  })
+
+  assert.equal(window.focusCount, 1)
+  assert.equal(service.getSnapshot().canCompose, true)
 })

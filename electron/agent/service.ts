@@ -133,6 +133,7 @@ export class AgentService {
       const tools = createAgentTools(this.options.soul, {
         chats: this.options.chats,
         systemToolsEnabled: settings.systemToolsEnabled !== false,
+        screenAccessEnabled: settings.screenAccessEnabled !== false,
         abortSignal: abort.signal,
         onEndConversation: () => {
           endRequested = true

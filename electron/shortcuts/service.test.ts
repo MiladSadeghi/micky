@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
+  DEFAULT_NEW_CHAT_SHORTCUT,
   DEFAULT_WAKE_WORD_SHORTCUT,
   type AppSettingsPatch
 } from '@/lib/settings'
@@ -14,6 +15,7 @@ function harness(options?: { occupied?: string[]; failUpdate?: boolean }) {
   const occupied = new Set(options?.occupied ?? [])
   let unregisterAllCalled = false
   const patches: AppSettingsPatch[] = []
+  let newChats = 0
   let wakeWordToggles = 0
   const registry: ShortcutRegistry = {
     register: (accelerator, callback) => {
@@ -33,6 +35,7 @@ function harness(options?: { occupied?: string[]; failUpdate?: boolean }) {
   const settings = {
     get: () => ({
       assistantShortcut: DEFAULT_ASSISTANT_SHORTCUT,
+      newChatShortcut: DEFAULT_NEW_CHAT_SHORTCUT,
       dictationShortcut: DEFAULT_DICTATION_SHORTCUT,
       wakeWordShortcut: DEFAULT_WAKE_WORD_SHORTCUT
     }),
@@ -47,6 +50,9 @@ function harness(options?: { occupied?: string[]; failUpdate?: boolean }) {
     settings,
     registry,
     onAssistant: () => undefined,
+    onNewChat: () => {
+      newChats += 1
+    },
     onDictation: () => undefined,
     onToggleWakeWord: () => {
       wakeWordToggles += 1
@@ -58,6 +64,7 @@ function harness(options?: { occupied?: string[]; failUpdate?: boolean }) {
     registered,
     patches,
     errors,
+    newChatCount: () => newChats,
     wakeWordToggleCount: () => wakeWordToggles,
     wasUnregisterAllCalled: () => unregisterAllCalled
   }
@@ -67,6 +74,7 @@ test('registers defaults and releases all shortcuts on shutdown', () => {
   const state = harness()
   state.service.registerAll()
   assert.equal(state.registered.has(DEFAULT_ASSISTANT_SHORTCUT), true)
+  assert.equal(state.registered.has(DEFAULT_NEW_CHAT_SHORTCUT), true)
   assert.equal(state.registered.has(DEFAULT_DICTATION_SHORTCUT), true)
   assert.equal(state.registered.has(DEFAULT_WAKE_WORD_SHORTCUT), true)
   state.registered.get(DEFAULT_WAKE_WORD_SHORTCUT)?.()
@@ -74,6 +82,18 @@ test('registers defaults and releases all shortcuts on shutdown', () => {
   state.service.unregisterAll()
   assert.equal(state.registered.size, 0)
   assert.equal(state.wasUnregisterAllCalled(), true)
+})
+
+test('opens a new conversation and persists a replacement shortcut', async () => {
+  const state = harness()
+  state.service.registerAll()
+  state.registered.get(DEFAULT_NEW_CHAT_SHORTCUT)?.()
+  assert.equal(state.newChatCount(), 1)
+
+  const replacement = 'CommandOrControl+Alt+N'
+  assert.equal(await state.service.replace('newChat', replacement), true)
+  assert.deepEqual(state.patches.at(-1), { newChatShortcut: replacement })
+  assert.equal(state.registered.has(replacement), true)
 })
 
 test('persists a replacement for the listening toggle', async () => {

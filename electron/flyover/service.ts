@@ -9,8 +9,11 @@ export class FlyoverService {
   #window: BrowserWindow | null = null
   #snapshot: FlyoverSnapshot = { ...INITIAL_FLYOVER_SNAPSHOT }
   #disclosureResolver: ((accepted: boolean) => void) | null = null
+  #dismissed = false
 
-  constructor(private readonly positionWindow: (window: BrowserWindow) => void) {}
+  constructor(
+    private readonly positionWindow: (window: BrowserWindow, snapshot: FlyoverSnapshot) => void
+  ) {}
 
   attachWindow(window: BrowserWindow): void {
     this.#window = window
@@ -22,6 +25,7 @@ export class FlyoverService {
   }
 
   show(update: Partial<FlyoverSnapshot>): FlyoverSnapshot {
+    this.#dismissed = false
     this.#snapshot = {
       ...INITIAL_FLYOVER_SNAPSHOT,
       ...update,
@@ -33,16 +37,24 @@ export class FlyoverService {
   }
 
   update(update: Partial<FlyoverSnapshot>): FlyoverSnapshot {
+    const shouldFocusComposer = !this.#snapshot.canCompose && update.canCompose === true
     this.#snapshot = { ...this.#snapshot, ...update }
-    if (this.#snapshot.visible) this.#present()
+    if (this.#snapshot.visible) this.#present(shouldFocusComposer)
     else this.#emit()
     return this.getSnapshot()
   }
 
   reveal(update: Partial<FlyoverSnapshot>): FlyoverSnapshot {
-    this.#snapshot = { ...this.#snapshot, ...update, visible: true }
-    this.#present()
+    const shouldFocusComposer = !this.#snapshot.canCompose && update.canCompose === true
+    this.#snapshot = { ...this.#snapshot, ...update, visible: !this.#dismissed }
+    if (this.#snapshot.visible) this.#present(shouldFocusComposer)
+    else this.#emit()
     return this.getSnapshot()
+  }
+
+  dismiss(): void {
+    this.#dismissed = true
+    this.hide()
   }
 
   hide(): void {
@@ -91,10 +103,10 @@ export class FlyoverService {
     this.#window = null
   }
 
-  #present(): void {
+  #present(focusComposer = false): void {
     const window = this.#window
     if (!window || window.isDestroyed()) return
-    this.positionWindow(window)
+    this.positionWindow(window, this.#snapshot)
     const focusable = this.#snapshot.interactive
     const wasFocusable = window.isFocusable()
     const alreadyVisible = window.isVisible()
@@ -105,7 +117,11 @@ export class FlyoverService {
       else window.showInactive()
       return
     }
-    if (focusable && !wasFocusable) window.show()
+    if (focusable && !wasFocusable) {
+      window.show()
+      return
+    }
+    if (focusable && focusComposer) window.focus()
   }
 
   #emit(): void {

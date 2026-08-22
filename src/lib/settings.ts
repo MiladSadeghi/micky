@@ -7,6 +7,7 @@ export const SETTINGS_SNAPSHOT_CHANNEL = 'settings:snapshot'
 export const APPEARANCE_SNAPSHOT_CHANNEL = 'appearance:snapshot'
 
 export const DEFAULT_ASSISTANT_SHORTCUT = 'CommandOrControl+Shift+Space'
+export const DEFAULT_NEW_CHAT_SHORTCUT = 'CommandOrControl+Alt+Shift+Space'
 export const DEFAULT_DICTATION_SHORTCUT = 'CommandOrControl+Shift+D'
 export const DEFAULT_WAKE_WORD_SHORTCUT = 'CommandOrControl+Shift+M'
 export const DEFAULT_VISION_MODEL_ID = 'google/gemini-2.5-flash'
@@ -15,6 +16,8 @@ export const DEFAULT_FONT_FAMILY = 'Vazirmatn'
 export const DEFAULT_AUDIO_DEVICE_ID = 'default'
 
 export type AppTheme = 'light' | 'dark'
+export type ScreenAccessStatus =
+  'granted' | 'denied' | 'restricted' | 'not-determined' | 'unknown' | 'not-required'
 
 export type AppSettings = {
   activeModelId: string
@@ -25,7 +28,9 @@ export type AppSettings = {
   webSearch: WebSearchSettings
   onboardingCompleted: boolean
   systemToolsEnabled: boolean
+  screenAccessEnabled: boolean
   assistantShortcut: string
+  newChatShortcut: string
   dictationShortcut: string
   wakeWordShortcut: string
   dictationAiCleanup: boolean
@@ -45,7 +50,9 @@ export type AppSettings = {
 export type SettingsSnapshot = {
   wakeWordEnabled: boolean
   systemToolsEnabled: boolean
+  screenAccessEnabled: boolean
   assistantShortcut: string
+  newChatShortcut: string
   dictationShortcut: string
   wakeWordShortcut: string
   dictationAiCleanup: boolean
@@ -70,7 +77,9 @@ export function toSettingsSnapshot(
   return {
     wakeWordEnabled: settings.wakeWordEnabled !== false,
     systemToolsEnabled: settings.systemToolsEnabled !== false,
+    screenAccessEnabled: settings.screenAccessEnabled !== false,
     assistantShortcut: settings.assistantShortcut,
+    newChatShortcut: settings.newChatShortcut,
     dictationShortcut: settings.dictationShortcut,
     wakeWordShortcut: settings.wakeWordShortcut,
     dictationAiCleanup: settings.dictationAiCleanup,

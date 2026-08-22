@@ -352,26 +352,58 @@
     overflow-x: hidden;
     overflow-y: auto;
     overflow-anchor: none;
-    scrollbar-width: none;
+    overscroll-behavior: contain;
+    scrollbar-color: color-mix(in srgb, var(--foreground) 20%, transparent) transparent;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
     font-size: 0.9375rem;
     line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    cursor: text;
+    user-select: text;
+    -webkit-app-region: no-drag;
   }
 
   .flyover-copy::-webkit-scrollbar {
-    display: none;
+    width: 4px;
   }
 
-  .flyover-copy[data-overflow='true'] {
+  .flyover-copy::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 20%, transparent);
+  }
+
+  .flyover-copy[data-can-scroll-up='true'] {
     mask-image: linear-gradient(to bottom, transparent, black 0.9rem, black 100%);
+  }
+
+  .flyover-surface[data-layout='expanded'] .flyover-copy {
+    max-height: 19rem;
+  }
+
+  .flyover-surface[data-layout='reading'] .flyover-copy {
+    max-height: 26rem;
   }
 
   .flyover-surface:has(.flyover-preview) .flyover-copy {
     max-height: 5.75rem;
   }
 
+  .flyover-detail {
+    max-height: 7.5rem;
+    overflow: auto;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    -webkit-app-region: no-drag;
+  }
+
   .flyover-compose {
     display: block;
+    min-width: 0;
     width: 100%;
+    max-height: 4.8rem;
+    overflow-y: auto;
     resize: none;
     border: 0;
     padding: 0;
@@ -385,45 +417,44 @@
     -webkit-app-region: no-drag;
   }
 
+  .flyover-compose-shell {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.45rem;
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    border-radius: 0.85rem;
+    padding: 0.38rem 0.45rem;
+    background: color-mix(in srgb, var(--foreground) 5%, transparent);
+    box-shadow: inset 0 1px color-mix(in srgb, var(--foreground) 4%, transparent);
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      box-shadow 160ms ease;
+    -webkit-app-region: no-drag;
+  }
+
+  .flyover-compose-shell:focus-within {
+    border-color: color-mix(in srgb, var(--foreground) 28%, var(--border));
+    background: color-mix(in srgb, var(--foreground) 7%, transparent);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--foreground) 5%, transparent),
+      inset 0 1px color-mix(in srgb, var(--foreground) 5%, transparent);
+  }
+
   .flyover-compose::placeholder {
     color: var(--muted-foreground);
   }
 
-  /* Stand-in caret so an untouched card still reads as somewhere you can type. */
-  .flyover-caret {
-    display: inline-block;
-    width: 0.075rem;
-    height: 1.05em;
-    margin-inline-start: 0.2rem;
-    background: var(--foreground);
-    border-radius: 1px;
-    vertical-align: -0.15em;
-    animation: flyover-caret-blink 1.15s step-end infinite;
+  .flyover-surface:has(.flyover-compose-shell) .flyover-copy {
+    max-height: 6.5rem;
   }
 
-  @keyframes flyover-caret-blink {
-    0%,
-    100% {
-      opacity: 0.85;
-    }
-    50% {
-      opacity: 0;
-    }
+  .flyover-surface[data-layout='expanded']:has(.flyover-compose-shell) .flyover-copy {
+    max-height: 15rem;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .flyover-caret {
-      animation: none;
-      opacity: 0.6;
-    }
-  }
-
-  /* Invisible key catcher: the card keeps showing live speech until you type. */
-  .flyover-compose-capture {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    pointer-events: none;
+  .flyover-surface[data-layout='reading']:has(.flyover-compose-shell) .flyover-copy {
+    max-height: 22rem;
   }
 
   .flyover-status-dot[data-active='true'] {

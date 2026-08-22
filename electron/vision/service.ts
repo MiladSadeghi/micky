@@ -1,5 +1,6 @@
-import { desktopCapturer, screen, systemPreferences, type NativeImage } from 'electron'
+import { desktopCapturer, screen, shell, systemPreferences, type NativeImage } from 'electron'
 import { generateText, type ModelMessage } from 'ai'
+import type { ScreenAccessStatus } from '@/lib/settings'
 import type { FlyoverService } from '../flyover/service'
 import type { LlmService } from '../llm/service'
 import type { SettingsStore } from '../settings/store'
@@ -12,6 +13,18 @@ type VisionServiceOptions = {
 
 export class VisionService {
   constructor(private readonly options: VisionServiceOptions) {}
+
+  getAccessStatus(): ScreenAccessStatus {
+    if (process.platform !== 'darwin') return 'not-required'
+    return systemPreferences.getMediaAccessStatus('screen')
+  }
+
+  async openAccessSettings(): Promise<void> {
+    if (process.platform !== 'darwin') return
+    await shell.openExternal(
+      'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+    )
+  }
 
   async inspect(question: string, abortSignal?: AbortSignal): Promise<string> {
     if (abortSignal?.aborted) return 'دیدن صفحه متوقف شد.'
@@ -33,6 +46,10 @@ export class VisionService {
       return message
     }
 
+    if (!this.options.settings.get().screenAccessEnabled) {
+      return finish('دیدن صفحه از تنظیمات «ابزارها و دسترسی‌ها» خاموش است.')
+    }
+
     if (!this.options.settings.get().screenDisclosureAccepted) {
       const accepted = await this.options.flyover.requestDisclosure(
         'میکی یک تصویر از نمایشگر فعال را برای تحلیل به مدل تصویری OpenRouter می‌فرستد. تصویر ذخیره نمی‌شود.'
@@ -44,7 +61,7 @@ export class VisionService {
     if (abortSignal?.aborted) return finish('دیدن صفحه متوقف شد.')
 
     if (process.platform === 'darwin') {
-      const status = systemPreferences.getMediaAccessStatus('screen')
+      const status = this.getAccessStatus()
       if (status === 'denied' || status === 'restricted') {
         return finish(
           'اجازه ضبط صفحه داده نشده. از تنظیمات حریم خصوصی macOS دسترسی Screen Recording را برای میکی روشن کن.'

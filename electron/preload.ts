@@ -164,6 +164,11 @@ const api: MickyAPI = {
     getSnapshot: (): Promise<SettingsSnapshot> => ipcRenderer.invoke('settings:get-snapshot'),
     setSystemToolsEnabled: (enabled: boolean): Promise<SettingsSnapshot> =>
       ipcRenderer.invoke('settings:set-system-tools', enabled),
+    setScreenAccessEnabled: (enabled: boolean): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-screen-access', enabled),
+    getScreenAccessStatus: () => ipcRenderer.invoke('settings:get-screen-access-status'),
+    openScreenAccessSettings: (): Promise<void> =>
+      ipcRenderer.invoke('settings:open-screen-access-settings'),
     setChatHistoryEnabled: (enabled: boolean): Promise<SettingsSnapshot> =>
       ipcRenderer.invoke('settings:set-chat-history', enabled),
     setShortcut: (kind, accelerator): Promise<SettingsSnapshot> =>

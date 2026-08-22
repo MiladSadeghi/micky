@@ -1,38 +1,59 @@
-# Changelog
+<div dir="rtl">
 
-All notable changes to Micky are documented here.
+# تاریخچه تغییرات
 
-## Unreleased
+تغییرات مهم میکی در این فایل ثبت می‌شوند.
 
-### Added
+## 1.0.0 · 2026-08-22
 
-- A version and changelog section in Settings with an on-demand update check.
-- A launch-time GitHub release check and compact update notices on Home and in Settings.
-- Platform- and architecture-aware download links with a safe fallback to the release page.
+### اضافه‌شده
 
-## 0.0.4 — 2026-08-21
+- پنجره شناور میانبر که صدا و تایپ را کنار هم می‌پذیرد، متن زنده گفتار و پاسخ را نشان می‌دهد و بعد از هر پاسخ دوباره آماده ادامه گفتگو می‌شود.
+- میانبر سراسری جدا برای بستن زمینه فعلی و شروع یک گفتگوی تازه.
+- نمایش خلاصه گفتگوی فعال هنگام بازکردن دوباره پنجره شناور.
+- بزرگ‌شدن مرحله‌ای پنجره شناور برای پاسخ‌های طولانی همراه با اسکرول قابل کنترل و انتخاب متن.
+- بخش «ابزارها و دسترسی‌ها» در تنظیمات برای کنترل مستقل دیدن صفحه، مدل تصویری، فایل‌ها، برنامه‌ها و دستورها.
+- نمایش وضعیت مجوز Screen Recording در macOS و دسترسی مستقیم به تنظیمات سیستم.
+- ابزار نوشتن فایل متنی با سیاست جدا برای فرمت‌های اجرایی، مسیرهای شروع خودکار و مقصدهای حساس.
+- بخش نسخه و تاریخچه تغییرات در تنظیمات همراه با بررسی دستی نسخه جدید.
+- بررسی GitHub Releases هنگام اجرای برنامه و اعلان جمع‌وجور به‌روزرسانی در خانه و تنظیمات.
+- لینک دانلود متناسب با سیستم‌عامل و معماری، همراه با برگشت امن به صفحه نسخه.
+- راه‌اندازی فارسی بازطراحی‌شده با معرفی کوتاه گفتگو، دیکته، دیدن صفحه و میانبرها.
+- مستندات کامل انگلیسی و فارسی همراه با تصاویر واقعی برنامه.
 
-### Added
+### تغییرکرده
 
-- Shortcut flyover now accepts typing as well as speech: the first keystroke stops the mic, the same card shows the draft, and Enter sends it through the existing turn machine.
-- Live streamed transcripts and replies in the flyover, with a blinking caret and keyboard hint so typing is obvious at a glance.
-- Automatic left-to-right layout when a draft or reply starts in English.
-- Listen and confirm earcons for the shortcut flyover.
+- پاسخ پنجره شناور و کادر پاسخ از هم جدا شده‌اند؛ با شروع حرف‌زدن، کادر تایپ پنهان می‌شود و متن زنده جای آن را می‌گیرد.
+- پنجره شناور بعد از پاسخ دوباره فوکوس تایپ می‌گیرد و هنگام بازشدن گفتگوی در حال اجرا را ادامه می‌دهد.
+- دیدن صفحه از دسترسی عمومی ابزارهای سیستم جدا شده و فقط پس از درخواست مستقیم کاربر در دسترس است.
+- نوشتن فایل‌های عادی متن، داده، تنظیمات و کد منبع بدون تأیید اضافه انجام می‌شود؛ فرمت‌ها و مسیرهای حساس همچنان تأیید می‌خواهند.
+- تنظیمات با گروه‌بندی روشن‌تر برای شنیدن، مغز، حرف‌زدن، رفتار، ابزارها، گفتگوها، میانبرها و ظاهر بازطراحی شده است.
 
-### Changed
+## 0.0.4 · 2026-08-21
 
-- Wake-word flyover stays voice-only and does not steal keyboard focus.
-- Typed replies stay on screen instead of jumping back to listen after a few seconds.
-- Screen capture can keep the flyover visible by excluding it from the screenshot on macOS and Windows.
+### اضافه‌شده
 
-## 0.0.3 — 2026-08-21
+- امکان تایپ در پنجره شناور میانبر در کنار گفتار؛ اولین کلید میکروفن را متوقف می‌کند و Enter پیام را از همان ماشین حالت گفتگو می‌فرستد.
+- نمایش زنده متن گفتار و پاسخ در پنجره شناور همراه با نشانه واضح برای شروع تایپ.
+- چیدمان خودکار چپ‌به‌راست وقتی پیش‌نویس یا پاسخ با انگلیسی شروع می‌شود.
+- صدای کوتاه برای شروع شنیدن و درخواست تأیید در پنجره شناور.
 
-### Added
+### تغییرکرده
 
-- Persistent light and dark appearance modes.
-- A privacy-conscious system font picker that loads only on request, supports search, and remembers the selected font.
-- Vazirmatn as the bundled default font, with a tribute to its creator, the late Saber Rastikerdar.
+- پنجره شناور عبارت بیدارباش فقط صوتی مانده و فوکوس صفحه‌کلید را نمی‌گیرد.
+- پاسخ‌های تایپی به‌جای برگشت سریع به حالت شنیدن، روی صفحه می‌مانند.
+- هنگام گرفتن تصویر صفحه در macOS و Windows، خود پنجره شناور از تصویر حذف می‌شود و می‌تواند باز بماند.
 
-### Changed
+## 0.0.3 · 2026-08-21
 
-- Removed the licensed Modam font from the app and ignore it locally.
+### اضافه‌شده
+
+- حالت روشن و تاریک با ذخیره دائمی انتخاب کاربر.
+- انتخاب‌گر فونت سیستم با جستجو، بارگذاری فقط هنگام درخواست و حفظ فونت انتخاب‌شده.
+- فونت Vazirmatn به‌عنوان فونت پیش‌فرض داخلی، همراه با یادبود سازنده آن، زنده‌یاد صابر راستی‌کردار.
+
+### تغییرکرده
+
+- فونت دارای مجوز Modam از برنامه حذف و به فهرست فایل‌های نادیده‌گرفته‌شده محلی اضافه شد.
+
+</div>

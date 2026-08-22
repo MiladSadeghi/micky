@@ -4,6 +4,8 @@ import type { ConversationMode } from '@/lib/conversation'
 export type AssistantShortcutAction =
   'start-session' | 'stop-session' | 'reveal-ongoing' | 'hide-mirror'
 
+export type MainWindowFocusAction = 'none' | 'hide' | 'detach-assistant' | 'cancel-compose'
+
 export function shouldShowWakeFlyover(
   activation: WakeWordActivation,
   mainWindowFocused: boolean
@@ -25,4 +27,14 @@ export function assistantShortcutAction(input: {
     return 'reveal-ongoing'
   }
   return 'start-session'
+}
+
+export function mainWindowFocusAction(input: {
+  flyoverVisible: boolean
+  assistantActive: boolean
+  assistantComposing: boolean
+}): MainWindowFocusAction {
+  if (!input.flyoverVisible) return 'none'
+  if (!input.assistantActive) return 'hide'
+  return input.assistantComposing ? 'cancel-compose' : 'detach-assistant'
 }

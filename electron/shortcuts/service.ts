@@ -1,11 +1,12 @@
 import type { SettingsStore } from '../settings/store'
 
-export type ShortcutKind = 'assistant' | 'dictation' | 'wakeWord'
+export type ShortcutKind = 'assistant' | 'newChat' | 'dictation' | 'wakeWord'
 
 type ShortcutServiceOptions = {
   settings: SettingsStore
   registry: ShortcutRegistry
   onAssistant: () => void
+  onNewChat: () => void
   onDictation: () => void
   onToggleWakeWord: () => void
   onError?: (error: string | null) => void
@@ -26,6 +27,7 @@ export class ShortcutService {
   registerAll(): void {
     const settings = this.options.settings.get()
     this.#registerInitial('assistant', settings.assistantShortcut)
+    this.#registerInitial('newChat', settings.newChatShortcut)
     this.#registerInitial('dictation', settings.dictationShortcut)
     this.#registerInitial('wakeWord', settings.wakeWordShortcut)
   }
@@ -54,9 +56,11 @@ export class ShortcutService {
       await this.options.settings.update(
         kind === 'assistant'
           ? { assistantShortcut: next }
-          : kind === 'dictation'
-            ? { dictationShortcut: next }
-            : { wakeWordShortcut: next }
+          : kind === 'newChat'
+            ? { newChatShortcut: next }
+            : kind === 'dictation'
+              ? { dictationShortcut: next }
+              : { wakeWordShortcut: next }
       )
     } catch (error) {
       this.options.registry.unregister(next)
@@ -84,12 +88,13 @@ export class ShortcutService {
     if (success) this.#registered.set(kind, accelerator)
     else
       this.options.onError?.(
-        `میانبر ${kind === 'assistant' ? 'دستیار' : kind === 'dictation' ? 'دیکته' : 'شنیدن همیشگی'} در دسترس نیست.`
+        `میانبر ${kind === 'assistant' ? 'دستیار' : kind === 'newChat' ? 'گفتگوی تازه' : kind === 'dictation' ? 'دیکته' : 'شنیدن همیشگی'} در دسترس نیست.`
       )
   }
 
   #callback(kind: ShortcutKind): () => void {
     if (kind === 'assistant') return this.options.onAssistant
+    if (kind === 'newChat') return this.options.onNewChat
     if (kind === 'dictation') return this.options.onDictation
     return this.options.onToggleWakeWord
   }

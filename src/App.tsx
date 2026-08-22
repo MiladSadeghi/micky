@@ -15,6 +15,7 @@ import { ChatDetailView, ChatHistoryView } from '@/components/chat-history-view'
 import { ConversationPreview } from '@/components/conversation-preview'
 import { MickyLogo } from '@/components/micky-logo'
 import { Button } from '@/components/ui/button'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import {
   Empty,
   EmptyContent,
@@ -37,6 +38,8 @@ import { useTurnCues } from '@/hooks/use-turn-cues'
 import { useTts } from '@/hooks/use-tts'
 import { useWakeWord } from '@/hooks/use-wake-word'
 import { useEarcons } from '@/hooks/use-earcons'
+import { DEFAULT_ASSISTANT_SHORTCUT } from '@/lib/settings'
+import { shortcutDisplayKeys } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 
 const PHASE_LABEL = {
@@ -163,7 +166,13 @@ function App(): React.JSX.Element {
   const activeChat = chats?.activeChat ?? null
   const hasConversation = Boolean(agentTurn || activeChat)
   const showContinuePrompt =
-    !modelUnavailable && hasConversation && !responseBusy && !isActivated && !isFollowup && !error
+    !modelUnavailable &&
+    enabled &&
+    hasConversation &&
+    !responseBusy &&
+    !isActivated &&
+    !isFollowup &&
+    !error
   const showFreshAction =
     !modelUnavailable &&
     hasConversation &&
@@ -179,6 +188,12 @@ function App(): React.JSX.Element {
     !isFollowup &&
     phase === 'listening'
   const showFirstConversationPrompt = firstConversationName !== null && showIdleGuide
+  const showListeningDisabledGuide =
+    !modelUnavailable && !enabled && !error && !responseBusy && !isActivated && !isFollowup
+  const assistantShortcutKeys = shortcutDisplayKeys(
+    settings?.assistantShortcut ?? DEFAULT_ASSISTANT_SHORTCUT,
+    window.api.app.platform
+  )
 
   const orbState: OrbState = modelUnavailable
     ? 'breathing'
@@ -429,6 +444,30 @@ function App(): React.JSX.Element {
               text={transcript.text}
               isFinal={transcript.isFinal}
             />
+          ) : showListeningDisabledGuide ? (
+            <div className="home-idle-copy gap-2.5">
+              <h1>شنیدن اسمم خاموشه</h1>
+              <p className="text-[0.68rem] leading-5 text-muted-foreground">
+                هنوز می‌تونی از هر برنامه‌ای با این میانبر منو باز کنی
+              </p>
+              <KbdGroup
+                dir="ltr"
+                aria-label={`میانبر بازکردن میکی: ${assistantShortcutKeys.join(' + ')}`}
+                className="mt-1"
+              >
+                {assistantShortcutKeys.map((key) => (
+                  <Kbd
+                    key={key}
+                    className="h-7 min-w-7 rounded-md border border-border/60 bg-foreground/8 px-2 text-xs text-foreground shadow-sm"
+                  >
+                    {key}
+                  </Kbd>
+                ))}
+              </KbdGroup>
+              <p className="text-[0.68rem] leading-5 text-muted-foreground">
+                یا همین الان روی گوی بزن
+              </p>
+            </div>
           ) : activeChat && !error && !isActivated && !isFollowup ? (
             <ConversationPreview chat={activeChat} onOpen={() => handleOpenChat(activeChat.id)} />
           ) : showFirstConversationPrompt ? (

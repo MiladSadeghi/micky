@@ -12,6 +12,7 @@ import {
   writeUserFile
 } from '../system/fs-tools'
 import { PathDeniedError, resolveSafePath } from '../system/paths'
+import { writeNeedsApproval } from '../system/write-policy'
 import { fetchCleanWebpage } from '../system/web-fetch'
 import type { SkillService } from '../skills/service'
 import type { WebSearchService } from '../web-search/service'
@@ -22,6 +23,7 @@ export type AgentToolHooks = {
   systemToolsEnabled?: boolean
   requestApproval?: (request: ApprovalRequest) => Promise<boolean>
   abortSignal?: AbortSignal
+  screenAccessEnabled?: boolean
   screenCaptureAllowed?: boolean
   lookAtScreen?: (question: string) => Promise<string>
   skills?: SkillService
@@ -138,31 +140,16 @@ export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): T
     }),
     edit_personal_context: tool({
       description:
-        "Replace one of Micky's private Markdown context files. Use only when the user explicitly asks to edit Micky's personality, profile document, or memory document. Preserve unrelated information. Prefer remember and update_user_profile for ordinary facts.",
+        "Replace one of Micky's private Markdown context files. Use only when the user explicitly asks to edit Micky's personality, profile document, or memory document. Preserve unrelated information. Prefer remember and update_user_profile for ordinary facts. Explicitly requested edits are applied without an additional confirmation.",
       inputSchema: z.object({
         file: z.enum(['soul', 'user', 'memory']).describe('The context document to replace'),
         content: z
           .string()
           .min(1)
           .max(20_000)
-          .describe('The complete replacement Markdown in English'),
-        purpose: z
-          .string()
-          .min(1)
-          .max(160)
-          .describe('One short Persian sentence explaining the change to the user')
+          .describe('The complete replacement Markdown in English')
       }),
-      execute: async ({ file, content, purpose }) => {
-        if (!hooks.requestApproval) {
-          return { updated: false, message: 'ویرایش تنظیمات شخصی در این جلسه در دسترس نیست.' }
-        }
-        const approved = await hooks.requestApproval({
-          purpose,
-          command: `${file.toUpperCase()}.md`,
-          toolName: 'edit_personal_context',
-          detail: `${file.toUpperCase()}.md`
-        })
-        if (!approved) return { updated: false, approved: false, message: 'کاربر اجازه نداد.' }
+      execute: async ({ file, content }) => {
         await soul.write(file, content)
         return { updated: true, file: `${file.toUpperCase()}.md` }
       }
@@ -236,8 +223,6 @@ export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): T
     })
   }
 
-  if (!hooks.systemToolsEnabled) return tools
-
   tools.look_at_screen = tool({
     description:
       'Look at the active display and explain what is visible. Use when the current user directly asks what you see, asks you to look at something visible now, or asks about their screen.',
@@ -245,6 +230,12 @@ export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): T
       question: z.string().max(500).describe('What the user wants understood from the screen')
     }),
     execute: async ({ question }) => {
+      if (hooks.screenAccessEnabled === false) {
+        return {
+          observed: false,
+          message: 'دیدن صفحه از تنظیمات «ابزارها و دسترسی‌ها» خاموش است.'
+        }
+      }
       if (!hooks.screenCaptureAllowed) {
         return {
           observed: false,
@@ -255,6 +246,8 @@ export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): T
       return { observed: true, observations: await hooks.lookAtScreen(question) }
     }
   })
+
+  if (!hooks.systemToolsEnabled) return tools
 
   tools.fetch_webpage = tool({
     description:
@@ -284,7 +277,7 @@ export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): T
 
   tools.write_file = tool({
     description:
-      'Create, replace, or append to a UTF-8 text file such as TXT, Markdown, CSV, JSON, or source code. Use only when the user asks you to save or change a file. Read an existing file before overwriting it, preserve unrelated content, and prefer create for new files. Protected paths and binary files are blocked. Every write requires user approval.',
+      'Create, replace, or append to a UTF-8 text file such as TXT, Markdown, CSV, JSON, or source code. Use only when the user asks you to save or change a file. Read an existing file before overwriting it, preserve unrelated content, and prefer create for new files. Ordinary text, data, configuration, and source-code files are written without an extra confirmation. Executable, shell-startup, and OS auto-start formats still require approval. Protected paths and binary files are blocked.',
     inputSchema: z.object({
       path: z.string().min(1).max(500).describe('Absolute path or ~/path for the destination file'),
       content: z
@@ -307,17 +300,19 @@ export function createAgentTools(soul: SoulStore, hooks: AgentToolHooks = {}): T
     }),
     execute: async ({ path, content, mode, purpose }) =>
       guardAction(async () => {
-        if (!hooks.requestApproval) {
-          return { written: false, message: 'نوشتن فایل در این جلسه در دسترس نیست.' }
-        }
         const resolvedPath = await resolveSafePath(path)
-        const approved = await hooks.requestApproval({
-          purpose,
-          command: resolvedPath,
-          toolName: 'write_file',
-          detail: `${mode}: ${resolvedPath}`
-        })
-        if (!approved) return { written: false, approved: false, message: 'کاربر اجازه نداد.' }
+        if (writeNeedsApproval(resolvedPath)) {
+          if (!hooks.requestApproval) {
+            return { written: false, message: 'نوشتن این نوع فایل در این جلسه در دسترس نیست.' }
+          }
+          const approved = await hooks.requestApproval({
+            purpose,
+            command: resolvedPath,
+            toolName: 'write_file',
+            detail: `${mode}: ${resolvedPath}`
+          })
+          if (!approved) return { written: false, approved: false, message: 'کاربر اجازه نداد.' }
+        }
         const result = await writeUserFile(resolvedPath, content, mode)
         return { written: true, ...result }
       }, 'نوشتن فایل ناموفق بود.')

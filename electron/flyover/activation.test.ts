@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assistantShortcutAction, shouldShowWakeFlyover } from './activation'
+import { assistantShortcutAction, mainWindowFocusAction, shouldShowWakeFlyover } from './activation'
 
 const WAKE_ACTIVATION = {
   source: 'wake-word',
@@ -63,5 +63,35 @@ test('starts a new assistant session when only dictation is active', () => {
       dictationActive: true
     }),
     'start-session'
+  )
+})
+
+test('detaches a visible assistant flyover when the main window gains focus', () => {
+  assert.equal(
+    mainWindowFocusAction({
+      flyoverVisible: true,
+      assistantActive: true,
+      assistantComposing: false
+    }),
+    'detach-assistant'
+  )
+  assert.equal(
+    mainWindowFocusAction({
+      flyoverVisible: true,
+      assistantActive: false,
+      assistantComposing: false
+    }),
+    'hide'
+  )
+})
+
+test('cancels an abandoned flyover draft when focus moves to the main window', () => {
+  assert.equal(
+    mainWindowFocusAction({
+      flyoverVisible: true,
+      assistantActive: true,
+      assistantComposing: true
+    }),
+    'cancel-compose'
   )
 })

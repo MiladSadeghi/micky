@@ -5,18 +5,23 @@ import {
   Database,
   Download,
   Ear,
+  Eye,
   ExternalLink,
   Globe2,
   Keyboard,
+  MessageCircleQuestion,
   MicOff,
   MousePointer2,
+  PenLine,
   Puzzle,
   Sparkles,
   Volume2,
+  Wrench,
   X,
   type LucideIcon
 } from 'lucide-react'
 import { useState } from 'react'
+import { ThinkingOrb } from 'thinking-orbs'
 import type { AsrModelView, ModelsSnapshot } from '@/lib/asr'
 import {
   EMPTY_USER_PROFILE,
@@ -93,12 +98,12 @@ export function OnboardingView({
 
   const finish = async (): Promise<void> => {
     if (!installedModel) {
-      setStep(3)
+      setStep(2)
       setError('برای شروع، اول یک مدل شنیدن دانلود کن.')
       return
     }
     if (!llmReady) {
-      setStep(4)
+      setStep(3)
       setError('برای شروع، یک مدل هوش مصنوعی را کامل وصل و انتخاب کن.')
       return
     }
@@ -117,7 +122,7 @@ export function OnboardingView({
   const installedModel = models?.models.some((model) => model.state === 'installed') ?? false
   const llmReady = llm?.configured === true && !llm.error
   const ttsReady = ttsSnapshot?.enabled !== false && ttsSnapshot?.configured === true
-  const canContinue = (step !== 3 || installedModel) && (step !== 4 || llmReady)
+  const canContinue = (step !== 2 || installedModel) && (step !== 3 || llmReady)
 
   const runOptionalSetup = async (action: () => Promise<unknown>): Promise<void> => {
     setError(null)
@@ -198,17 +203,6 @@ export function OnboardingView({
 
         {step === 2 ? (
           <StepBody
-            eyebrow="بگو از کجا بشنوم"
-            title="دستگاه‌های صدا رو انتخاب کن"
-            description="میکروفنی که باهاش حرف می‌زنی و خروجی‌ای که صدای من رو ازش می‌شنوی انتخاب کن. اگه مطمئن نیستی، پیش‌فرض سیستم خوبه."
-            topAligned
-          >
-            <AudioDeviceSettings settings={settings} devices={audioDevices} compact />
-          </StepBody>
-        ) : null}
-
-        {step === 3 ? (
-          <StepBody
             eyebrow="اول گوش‌هام رو آماده کنیم"
             title="مدل شنیدن رو انتخاب کن"
             description="این مدل صدات رو همین‌جا روی دستگاه به متن تبدیل می‌کنه. فقط یه بار دانلودش کن؛ بعدش بدون اینترنت هم صدات رو می‌شنوم."
@@ -228,11 +222,25 @@ export function OnboardingView({
                 </p>
               ) : null}
               <ShenavaModelHelp />
+              <details className="group rounded-xl border border-border/55 bg-card/25">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3.5 py-3 text-xs font-medium select-none">
+                  <span>تنظیمات پیشرفتهٔ صدا</span>
+                  <span className="text-[0.62rem] font-normal text-muted-foreground">
+                    میکروفن و خروجی صدا
+                  </span>
+                </summary>
+                <div className="border-t border-border/45 p-3">
+                  <p className="mb-3 text-[0.65rem] leading-5 text-muted-foreground">
+                    اگه مطمئن نیستی، پیش‌فرض سیستم بهترین انتخابه.
+                  </p>
+                  <AudioDeviceSettings settings={settings} devices={audioDevices} compact />
+                </div>
+              </details>
             </div>
           </StepBody>
         ) : null}
 
-        {step === 4 ? (
+        {step === 3 ? (
           <div className="flex min-h-0 flex-1 flex-col gap-2.5 text-start">
             <StepHeading
               eyebrow="حالا مغزم رو انتخاب کن"
@@ -245,7 +253,7 @@ export function OnboardingView({
           </div>
         ) : null}
 
-        {step === 5 ? (
+        {step === 4 ? (
           <StepBody
             eyebrow="آخرین مرحله"
             title="شخصیت، ابزارها و مهارت‌ها"
@@ -344,6 +352,14 @@ export function OnboardingView({
           </StepBody>
         ) : null}
 
+        {step === 5 ? (
+          <UseCasesStep
+            assistantShortcut={settings?.assistantShortcut ?? DEFAULT_ASSISTANT_SHORTCUT}
+            dictationShortcut={settings?.dictationShortcut ?? DEFAULT_DICTATION_SHORTCUT}
+            theme={settings?.theme === 'light' ? 'light' : 'dark'}
+          />
+        ) : null}
+
         {step === 6 ? (
           <ReadyStep
             name={draft.name}
@@ -356,9 +372,9 @@ export function OnboardingView({
 
       <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/40 px-5 pt-3 pb-4">
         <p className="max-w-40 text-[0.62rem] leading-4 text-muted-foreground">
-          {step === 3 && !installedModel
+          {step === 2 && !installedModel
             ? 'برای ادامه، دانلود مدل شنیدن لازمه.'
-            : step === 4 && !llmReady
+            : step === 3 && !llmReady
               ? 'وقتی اتصال و مدل آماده بشن می‌تونی ادامه بدی.'
               : 'بعداً هم از تنظیمات می‌تونی همه‌چیز رو عوض کنی.'}
         </p>
@@ -600,6 +616,124 @@ function SpeechModel({
         </div>
       ) : null}
       {model.error ? <p className="text-[0.65rem] text-destructive">{model.error}</p> : null}
+    </article>
+  )
+}
+
+function UseCasesStep({
+  assistantShortcut,
+  dictationShortcut,
+  theme
+}: {
+  assistantShortcut: string
+  dictationShortcut: string
+  theme: 'light' | 'dark'
+}): React.JSX.Element {
+  const assistantKeys = shortcutDisplayKeys(assistantShortcut, window.api.app.platform)
+  const dictationKeys = shortcutDisplayKeys(dictationShortcut, window.api.app.platform)
+
+  return (
+    <StepBody
+      eyebrow="میکی همه‌جا همراهته"
+      title="هرجا هستی، صدام کن"
+      description="لازم نیست برگردی به پنجرهٔ میکی. با میانبر منو روی برنامه‌ای که توش هستی بیار و همون‌جا حرفت رو بزن."
+      topAligned
+    >
+      <div
+        className="relative min-h-56 overflow-hidden rounded-2xl border border-white/10 bg-[#17191f]"
+        aria-label="نمونهٔ بازشدن میکی روی یک برنامه"
+      >
+        <div className="absolute top-3 left-3 flex items-center gap-2 rounded-xl border border-white/15 bg-black/55 px-2.5 py-2 text-white shadow-lg backdrop-blur-lg">
+          <Keyboard className="size-3.5 opacity-75" aria-hidden="true" />
+          <span className="text-[0.61rem]">از هر برنامه‌ای بازش کن</span>
+          <KbdGroup dir="ltr">
+            {assistantKeys.map((key) => (
+              <Kbd key={key} className="bg-white/15 text-white/80">
+                {key}
+              </Kbd>
+            ))}
+          </KbdGroup>
+        </div>
+
+        <section className="flyover-surface absolute right-2 bottom-2 left-2 flex flex-col gap-3 rounded-[1.5rem] border border-border/70 bg-card/95 px-3.5 py-3.5 shadow-2xl backdrop-blur-xl">
+          <div className="flex w-full items-start gap-3.5">
+            <span
+              className="flyover-orb-well grid size-20 shrink-0 place-items-center rounded-full bg-foreground/10"
+              data-active="true"
+            >
+              <ThinkingOrb
+                state="listening"
+                size={64}
+                theme={theme}
+                speed={1.2}
+                aria-hidden="true"
+              />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5 text-start">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-[0.68rem] font-medium tracking-wide text-muted-foreground">
+                  میکی
+                </span>
+                <span
+                  className="flyover-status-dot size-1.5 shrink-0 rounded-full bg-foreground"
+                  data-active="true"
+                  aria-hidden="true"
+                />
+              </div>
+              <p className="text-[0.9rem] leading-6">گوش می‌دم…</p>
+              <p className="text-[0.66rem] text-muted-foreground">هر وقت آماده‌ای شروع کن</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <UseCaseCard icon={MessageCircleQuestion} title="سؤال بپرس" example="«فردا هوا چطوره؟»" />
+        <UseCaseCard icon={Eye} title="صفحه رو نشونم بده" example="«ببین اینجا چه اتفاقی افتاده»" />
+        <UseCaseCard icon={Wrench} title="یه کار بسپر" example="«این فایل رو برام پیدا کن»" />
+        <UseCaseCard
+          icon={PenLine}
+          title="به‌جای تایپ حرف بزن"
+          example="متنت همون‌جا نوشته می‌شه"
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-border/55 bg-card/30 px-3.5 py-3">
+        <div className="min-w-0 text-start">
+          <h2 className="text-xs font-medium">دیکته در هر کادر متنی</h2>
+          <p className="mt-1 text-[0.65rem] leading-5 text-muted-foreground">
+            جای نوشتن رو انتخاب کن، میانبر رو بزن و طبیعی حرف بزن؛ میکی متن رو تمیز می‌کنه و همون‌جا
+            می‌نویسه.
+          </p>
+        </div>
+        <KbdGroup dir="ltr" className="shrink-0">
+          {dictationKeys.map((key) => (
+            <Kbd key={key}>{key}</Kbd>
+          ))}
+        </KbdGroup>
+      </div>
+
+      <p className="px-1 text-[0.63rem] leading-5 text-muted-foreground">
+        دیدن صفحه فقط وقتی انجام می‌شه که خودت واضح از میکی بخوای نگاه کنه.
+      </p>
+    </StepBody>
+  )
+}
+
+function UseCaseCard({
+  icon: Icon,
+  title,
+  example
+}: {
+  icon: LucideIcon
+  title: string
+  example: string
+}): React.JSX.Element {
+  return (
+    <article className="flex min-h-24 flex-col rounded-xl border border-border/55 bg-card/25 p-3 text-start">
+      <Icon className="mb-3 size-4 text-muted-foreground" aria-hidden="true" />
+      <h2 className="text-xs font-medium">{title}</h2>
+      <p className="mt-1 text-[0.62rem] leading-4.5 text-muted-foreground">{example}</p>
     </article>
   )
 }

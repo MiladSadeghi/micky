@@ -20,6 +20,7 @@ import {
   DEFAULT_DICTATION_SHORTCUT,
   DEFAULT_FONT_FAMILY,
   DEFAULT_THEME,
+  DEFAULT_NEW_CHAT_SHORTCUT,
   DEFAULT_WAKE_WORD_SHORTCUT,
   DEFAULT_VISION_MODEL_ID
 } from '@/lib/settings'
@@ -32,6 +33,7 @@ test('loads defaults when no settings file exists', async () => {
   assert.equal(settings.wakeWordEnabled, true)
   assert.equal(settings.onboardingCompleted, false)
   assert.equal(settings.systemToolsEnabled, true)
+  assert.equal(settings.screenAccessEnabled, true)
   assert.equal(settings.llm.modelId, DEFAULT_LLM_MODEL_ID)
   assert.equal(settings.llm.providerModelIds.openrouter, DEFAULT_LLM_MODEL_ID)
   assert.deepEqual(settings.llm.baseUrls, DEFAULT_LLM_BASE_URLS)
@@ -41,6 +43,7 @@ test('loads defaults when no settings file exists', async () => {
   assert.deepEqual(settings.tts, DEFAULT_TTS_SETTINGS)
   assert.deepEqual(settings.webSearch, DEFAULT_WEB_SEARCH_SETTINGS)
   assert.equal(settings.assistantShortcut, DEFAULT_ASSISTANT_SHORTCUT)
+  assert.equal(settings.newChatShortcut, DEFAULT_NEW_CHAT_SHORTCUT)
   assert.equal(settings.dictationShortcut, DEFAULT_DICTATION_SHORTCUT)
   assert.equal(settings.wakeWordShortcut, DEFAULT_WAKE_WORD_SHORTCUT)
   assert.equal(settings.dictationAiCleanup, true)
@@ -89,6 +92,7 @@ test('normalizes invalid persisted values on load', async () => {
   assert.deepEqual(settings.tts, DEFAULT_TTS_SETTINGS)
   assert.deepEqual(settings.webSearch.enabledProviders, ['exa', 'google'])
   assert.equal(settings.assistantShortcut, DEFAULT_ASSISTANT_SHORTCUT)
+  assert.equal(settings.newChatShortcut, DEFAULT_NEW_CHAT_SHORTCUT)
   assert.equal(settings.wakeWordShortcut, DEFAULT_WAKE_WORD_SHORTCUT)
   assert.equal(settings.dictationAiCleanup, true)
   assert.equal(settings.chatHistoryEnabled, true)

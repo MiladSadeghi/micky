@@ -8,7 +8,7 @@ import type {
   LlmSnapshot,
   OpenAiCompatibleProviderId
 } from '@/lib/llm'
-import type { AppTheme, SettingsSnapshot } from '@/lib/settings'
+import type { AppTheme, ScreenAccessStatus, SettingsSnapshot } from '@/lib/settings'
 import type { SoulFileId, SoulSnapshot, UserProfileDraft } from '@/lib/soul'
 import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
 import type { TtsPlayback, TtsProviderId, TtsSnapshot, TtsStatus } from '@/lib/tts'
@@ -91,9 +91,12 @@ export type MickyAPI = {
   settings: {
     getSnapshot: () => Promise<SettingsSnapshot>
     setSystemToolsEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
+    setScreenAccessEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
+    getScreenAccessStatus: () => Promise<ScreenAccessStatus>
+    openScreenAccessSettings: () => Promise<void>
     setChatHistoryEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
     setShortcut: (
-      kind: 'assistant' | 'dictation' | 'wakeWord',
+      kind: 'assistant' | 'newChat' | 'dictation' | 'wakeWord',
       accelerator: string
     ) => Promise<SettingsSnapshot>
     setDictationAiCleanup: (enabled: boolean) => Promise<SettingsSnapshot>

@@ -3,9 +3,11 @@
 
 # Micky
 
-**A small, Persian-first voice assistant for your desktop.**
+**A small Persian-first voice assistant for your desktop.**
 
-Say what you need, let Micky do the work, and get back to your life.
+Speak naturally, let Micky handle the task, and get back to your life.
+
+[فارسی](./README.fa.md) · [Download](https://github.com/xmannii/micky/releases/latest) · [Changelog](./CHANGELOG.md)
 
 [![Release](https://img.shields.io/github/v/release/xmannii/micky?style=flat-square)](https://github.com/xmannii/micky/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/xmannii/micky/ci.yml?branch=main&style=flat-square&label=tests)](https://github.com/xmannii/micky/actions/workflows/ci.yml)
@@ -14,85 +16,110 @@ Say what you need, let Micky do the work, and get back to your life.
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](#license)
 </div>
 
+![Micky home screen](./docs/images/micky-home.png)
+
 > [!WARNING]
-> Micky is experimental software. Expect rough edges, imperfect speech recognition, and bugs. Do not rely on it for critical or irreversible work. Bug reports and pull requests are very welcome.
+> Micky can misunderstand speech, produce incorrect answers, or fail while using a tool. Review confirmation prompts and keep backups of important files. Public builds are currently unsigned.
 
-## What is Micky?
+## Meet Micky
 
-AI software has become too complicated. Micky takes the opposite approach: it is a compact companion, not another workspace, dashboard, or text chat.
+Most AI desktop apps grow into workspaces full of panels, threads, and text boxes. Micky stays small. Wake it with **«هی میکی»** ("Hey Micky"), tap the orb, or use a global shortcut. Say what you need and hear a short Persian answer.
 
-Wake it with **«هی میکی»** ("Hey Micky") or a keyboard shortcut, speak naturally in Persian, and hear a short answer. Micky can also dictate into other apps, inspect the screen when explicitly asked, work with files, open apps, run guarded commands, remember useful context, and search past conversations.
+The home window is a 400×712 companion built around one conversation. A compact archive keeps past chats close without turning the app into a permanent chat interface. The shortcut flyover works from any app and accepts voice or typing.
 
-Micky is designed around Persian. Its interface, wake phrase, speech recognition, agent behavior, and spoken responses are all Persian-first. Other languages may work through the selected language model, but they are not the primary product experience yet.
+Micky is Persian-first across the whole loop: interface copy, wake phrase, local transcription, agent instructions, and spoken replies. A selected language model may understand other languages, but Persian is the designed experience.
 
-## Highlights
+## Three parts, configured separately
 
-- 🗣️ **Persian-first voice loop** — wake, listen, think, reply, and keep listening for a natural follow-up.
-- 🎙️ **Local speech recognition** — microphone audio is transcribed on-device with [Shenava](https://huggingface.co/collections/Reza2kn/shenava-10-open-streaming-persian-asr-and-captioning) and `sherpa-onnx`.
-- 👂 **Local wake word** — «هی میکی» is detected on-device by bundled ONNX models.
-- ⌨️ **System-wide dictation** — dictate into the active app, with optional AI cleanup and automatic paste.
-- 🧠 **Your choice of model** — use OpenRouter, a custom OpenAI-compatible endpoint, Ollama, or LM Studio.
-- 🔊 **Optional spoken replies** — use Gemini or ElevenLabs text-to-speech, or keep TTS disabled.
-- 🧰 **Guarded desktop tools** — file access, search, app launching, commands, and screen understanding are protected by path rules, a command policy, and confirmations.
-- 💬 **Local conversation archive** — conversations are stored in a local SQLite database and can be searched or resumed.
-- 🧩 **Agent skills** — Micky discovers compatible skills installed through [skills.sh](https://skills.sh) and loads their instructions only when needed.
+Micky treats voice assistance as three independent systems. You can replace or disable one part without rebuilding the others.
 
-## How it works
+| Part             | What it does                                                                     | Your choices                                                                                                                                                                             |
+| ---------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 👂 **Listening** | Detects «هی میکی», captures speech, and turns Persian audio into text            | Local ONNX wake word, local [Shenava](https://huggingface.co/collections/Reza2kn/shenava-10-open-streaming-persian-asr-and-captioning) models, selectable microphone and endpoint timing |
+| 🧠 **Brain**     | Understands the request, keeps context, chooses tools, and writes a short answer | OpenRouter, custom OpenAI-compatible endpoints, Ollama, or LM Studio; configurable personality, memory, skills, tools, and web search                                                    |
+| 🔊 **Speaking**  | Reads Micky's answer aloud                                                       | Gemini TTS, ElevenLabs, or fully disabled for written replies                                                                                                                            |
+
+This split makes local and cloud setups practical. One person can use local listening with OpenRouter and no spoken output. Another can keep the brain local with Ollama, then enable a cloud voice. Provider choices remain explicit in Settings.
+
+## The conversation loop
 
 ```text
-“هی میکی” or shortcut
-          ↓
-Local wake-word detection
-          ↓
-Local Shenava speech-to-text
-          ↓
-Selected language model + optional tools
-          ↓
-Short Persian reply + optional TTS
-          ↓
-12-second follow-up window
+«هی میکی», orb, or shortcut
+              ↓
+       local listening
+              ↓
+   selected model + tools
+              ↓
+ short reply + optional voice
+              ↓
+      follow-up listening
 ```
 
-The renderer only handles the orb, microphone capture, status, settings, and the conversation archive. The Electron main process owns the conversation state machine, models, tools, permissions, persistence, and provider calls.
+Micky keeps the current conversation active across follow-up windows and app reloads. A separate global shortcut opens a clean conversation when context is no longer useful. The flyover shows the latest answer, offers voice and typing together, switches to a live transcript when you speak, and restores the response field after the reply. It grows in two steps for longer answers and keeps the text scrollable and selectable.
 
-## Privacy and local processing
+## What Micky can do
 
-Micky is local-first, but not automatically cloud-free. What leaves your computer depends on the providers and features you choose.
+- Hold short Persian voice conversations with natural follow-ups.
+- Dictate into the active application, with optional AI cleanup and automatic paste.
+- Search the web through a configured provider and read public pages.
+- Inspect the active display after a direct request and a clear disclosure.
+- Read, search, create, and update files inside guarded locations.
+- Open applications and run policy-checked commands.
+- Remember useful facts and maintain editable personality and profile files.
+- Store, search, resume, disable, or clear local conversation history.
+- Load compatible agent skills only when a task needs them.
+- Check GitHub Releases and point to the correct installer for the current platform.
 
-| Data or feature        | Where it goes                                                                                                  |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Wake-word audio        | Processed locally; not sent to a wake-word service                                                             |
-| Speech recognition     | Processed locally by Shenava after the model is downloaded                                                     |
-| Conversation history   | Stored locally in SQLite; history can be disabled or cleared                                                   |
-| API keys               | Stored in the operating system keychain                                                                        |
-| Agent requests         | Sent to your selected LLM endpoint; Ollama and LM Studio can remain local                                      |
-| Spoken replies         | Sent to Gemini or ElevenLabs only when that optional TTS provider is enabled                                   |
-| Screen content         | Captured only after an explicit screen request and disclosure, then sent to the selected vision-capable model  |
-| File and command tools | Run locally and only when system tools are enabled                                                             |
+## A closer look
 
-There is no analytics or telemetry code in the app. For the most private setup, use a local Shenava model with Ollama or LM Studio, keep cloud TTS disabled, and leave system tools off unless you need them.
+<table>
+  <tr>
+    <td width="50%"><img src="./docs/images/micky-onboarding.png" alt="Micky Persian onboarding" /></td>
+    <td width="50%"><img src="./docs/images/micky-settings.png" alt="Micky modular settings" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Short Persian onboarding</sub></td>
+    <td align="center"><sub>Independent listening, brain, speaking, tools, and behavior settings</sub></td>
+  </tr>
+</table>
+
+## Privacy and safety
+
+Micky is local-first. It is only cloud-free when every selected provider is local.
+
+| Data or feature      | Where it goes                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Wake-word audio      | Processed locally by bundled ONNX models                                                                                 |
+| Speech recognition   | Processed locally by the downloaded Shenava model                                                                        |
+| Conversation history | Stored in local SQLite; it can be disabled or cleared                                                                    |
+| API keys             | Stored in the operating system keychain                                                                                  |
+| Agent requests       | Sent to the selected LLM endpoint; Ollama and LM Studio can stay local                                                   |
+| Spoken replies       | Sent to Gemini or ElevenLabs only when that provider is enabled                                                          |
+| Screen content       | Captured after a direct request and disclosure, then sent to the selected vision model; captures are not stored by Micky |
+| Files and commands   | Handled locally under path guards, command policy, sandboxing, and approval rules                                        |
+
+There is no analytics or telemetry code in the app. For the most private setup, use local Shenava with Ollama or LM Studio, leave cloud TTS off, and enable desktop tools only when needed.
+
+Ordinary reads and text-file edits inside allowed locations can run directly. Executable files, startup locations, destructive commands, installations, and other sensitive actions require approval or remain blocked. Secrets, browser data, SSH keys, and protected paths stay outside tool access.
 
 ## Download
 
-Download the latest installer from [GitHub Releases](https://github.com/xmannii/micky/releases/latest):
+Get the latest installer from [GitHub Releases](https://github.com/xmannii/micky/releases/latest):
 
 - **macOS Apple Silicon:** `micky-<version>-arm64.dmg`
 - **Windows x64:** `micky-<version>-x64-setup.exe`
 
-The first public builds are unsigned and the macOS builds are not notarized. macOS Gatekeeper or Windows SmartScreen may therefore show a warning. Only download Micky from this repository, and inspect or build the source yourself if that warning is not acceptable to you.
+The current builds are unsigned and macOS builds are not notarized. Gatekeeper or SmartScreen may show a warning. Download Micky only from this repository, or build it from source.
 
 ## First run
 
 1. Open Micky and allow microphone access.
-2. Download one of the offered Shenava speech models. A smaller model is faster; a larger model is usually more accurate.
-3. Choose an LLM provider:
-   - add an OpenRouter API key;
-   - connect a custom OpenAI-compatible endpoint; or
-   - use local Ollama or LM Studio.
+2. Download a Shenava speech model. Smaller models are faster; larger models are usually more accurate.
+3. Choose a brain: OpenRouter, a custom compatible endpoint, Ollama, or LM Studio.
 4. Optionally configure Gemini or ElevenLabs for spoken replies.
-5. Say «هی میکی», tap the orb, or use the configured shortcut.
+5. Say «هی میکی», tap the orb, or use the configured global shortcut.
 
-Models and API usage may have their own licenses, privacy policies, and costs. Micky does not include paid provider access.
+Models and provider usage may have separate licenses, privacy policies, and costs. Micky does not include paid provider access.
 
 ## Development
 
@@ -100,7 +127,7 @@ Models and API usage may have their own licenses, privacy policies, and costs. M
 
 - Node.js 24.8 or newer
 - pnpm 9 or newer
-- macOS or Windows for the supported desktop builds
+- macOS or Windows for supported desktop builds
 
 ### Run locally
 
@@ -133,52 +160,40 @@ Installers are written to `release/`.
 | ------------------------ | ---------------------------------------------------------------------- |
 | `src/`                   | React renderer: orb, microphone capture, status, settings, and archive |
 | `src/lib/`               | Types and constants shared across Electron processes                   |
-| `electron/conversation/` | Voice turn state machine and follow-up behavior                        |
+| `electron/conversation/` | Turn state machine and follow-up behavior                              |
 | `electron/wake-word/`    | Local ONNX wake-word detector                                          |
 | `electron/speech/`       | Local Shenava speech recognition process                               |
-| `electron/agent/`        | Model tool loop and short Persian voice contract                       |
-| `electron/system/`       | File guards, command policy, and sandboxing                            |
+| `electron/agent/`        | Model tool loop and Persian response contract                          |
+| `electron/system/`       | File guards, write policy, command policy, and sandboxing              |
 | `electron/chats/`        | Local SQLite persistence and full-text search                          |
 | `electron/soul/`         | Personality, user profile, and memory layers                           |
-| `electron/llm/`          | LLM providers and OS-keychain-backed secrets                           |
+| `electron/llm/`          | Model providers and keychain-backed secrets                            |
 
-Renderer code talks to the main process only through the preload API in `electron/preload.ts` and `src/lib/desktop-api.ts`.
+The renderer talks to the Electron main process only through the preload API. Conversation state, model calls, tools, permissions, and persistence stay in the main process.
 
 ## Releases and CI
 
-Every push and pull request runs typechecking and the test suite on GitHub Actions.
+Every push and pull request runs typechecking and the test suite. A version change on `main` starts macOS and Windows packaging. When both builds succeed, the release workflow creates `v<version>` and attaches the installers.
 
-Release builds are intentionally version-driven. A push to `main` only starts the macOS and Windows packaging jobs when the version in `package.json` does not have a matching release tag yet. This catches a new version bump and safely retries an unpublished version after a failed workflow. After all native builds succeed, the workflow creates the matching `v<version>` GitHub Release and attaches the installers.
-
-To prepare a future release:
+To prepare a release:
 
 1. Update `version` in `package.json`.
-2. Commit and push the bump to `main`.
-3. Let the release workflow test, package, tag, and publish the installers.
+2. Update `CHANGELOG.md`.
+3. Commit and push to `main`.
+4. Let the release workflow test, package, tag, and publish.
 
 ## Contributing
 
-Micky is young and bugs are expected. If something breaks, please [open an issue](https://github.com/xmannii/micky/issues) with your operating system, what you expected, what happened, and any useful logs with secrets removed.
+Bug reports and pull requests are welcome. Include the operating system, expected behavior, actual behavior, and useful logs with secrets removed.
 
-Pull requests are welcome. Keep Micky small, voice-first, and Persian-first: prefer a tool and a one-line status over a new dashboard or permanent view. Before opening a PR, run:
+Keep Micky small, voice-first, and Persian-first. Prefer a tool and one line of status over a new dashboard or permanent view. Run `pnpm typecheck` and `pnpm test` before opening a pull request.
 
-```bash
-pnpm typecheck
-pnpm test
-```
-
-Please never include API keys, private conversation data, screenshots, or downloaded model files in an issue or commit.
-
-## Experimental software
-
-This is an early `0.x` release. Interfaces, local data formats, prompts, provider support, and behavior may change without migration guarantees. Speech recognition can misunderstand you, language models can produce incorrect output, and tool calls can fail. Review confirmation prompts carefully and keep backups of important files.
+Never include API keys, private conversations, personal screenshots, or downloaded model files in an issue or commit.
 
 ## License
 
-MIT. See the repository's package metadata for the current license declaration.
-
----
+MIT. See [package.json](./package.json).
 
 <div align="center">
-  Built for speaking Persian, getting things done, and closing the computer again.
+  <sub>Built for speaking Persian, getting things done, and closing the computer again.</sub>
 </div>

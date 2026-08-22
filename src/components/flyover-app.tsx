@@ -1,4 +1,5 @@
 import {
+  ArrowUp,
   Check,
   ChevronDown,
   Download,
@@ -19,6 +20,7 @@ import { applyAppearance } from '@/lib/appearance'
 import { DEFAULT_FONT_FAMILY, DEFAULT_THEME, type AppearanceSnapshot } from '@/lib/settings'
 import { useEarcons } from '@/hooks/use-earcons'
 import { useTypewriter } from '@/hooks/use-typewriter'
+import { getFlyoverLayout } from '@/lib/flyover-layout'
 import { detectTextDirection } from '@/lib/text-direction'
 import { playConfirmChime } from '@/lib/wake-chime'
 
@@ -43,48 +45,47 @@ function isImeKey(event: { nativeEvent: { isComposing: boolean }; keyCode: numbe
   return event.nativeEvent.isComposing || event.keyCode === 229
 }
 
-function FlyoverCopy({
-  text,
-  animate,
-  caret
-}: {
-  text: string
-  animate: boolean
-  caret: boolean
-}): React.JSX.Element {
+function updateCopyScrollState(element: HTMLDivElement): void {
+  if (element.scrollTop > 1) element.dataset.canScrollUp = 'true'
+  else delete element.dataset.canScrollUp
+}
+
+function FlyoverCopy({ text, animate }: { text: string; animate: boolean }): React.JSX.Element {
   const scrollerRef = useRef<HTMLDivElement>(null)
-  const [overflow, setOverflow] = useState(false)
+  const shouldFollowRef = useRef(true)
   const shown = useTypewriter(text, animate)
 
   useEffect(() => {
     const el = scrollerRef.current
     if (!el) return
-    setOverflow(el.scrollHeight > el.clientHeight + 1)
-    el.scrollTop = el.scrollHeight
+    if (shouldFollowRef.current) el.scrollTop = el.scrollHeight
+    updateCopyScrollState(el)
   }, [shown])
+
+  useEffect(() => {
+    shouldFollowRef.current = true
+  }, [text])
 
   return (
     <div
       ref={scrollerRef}
       className="flyover-copy"
-      data-overflow={overflow || undefined}
-      dir={detectTextDirection(text)}
+      onScroll={(event) => {
+        const el = event.currentTarget
+        shouldFollowRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8
+        updateCopyScrollState(el)
+      }}
     >
-      <p>
-        {shown || '…'}
-        {caret ? <span className="flyover-caret" aria-hidden="true" /> : null}
-      </p>
+      <p dir={detectTextDirection(text)}>{shown || '…'}</p>
     </div>
   )
 }
 
 function FlyoverCompose({
-  composing,
   draft,
   onDraftChange,
   onSubmit
 }: {
-  composing: boolean
   draft: string
   onDraftChange: (text: string) => void
   onSubmit: () => void
@@ -101,33 +102,55 @@ function FlyoverCompose({
   useEffect(() => {
     const el = inputRef.current
     if (!el) return
-    if (!composing) {
-      el.style.height = ''
-      return
-    }
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-  }, [composing, draft])
+  }, [draft])
 
   return (
-    <textarea
-      ref={inputRef}
-      className={cn('flyover-compose', composing ? 'flyover-copy' : 'flyover-compose-capture')}
-      value={draft}
-      rows={1}
-      dir={detectTextDirection(draft)}
-      placeholder={composing ? 'بنویس…' : undefined}
-      aria-label="پیام برای میکی"
-      autoFocus
-      onChange={(event) => onDraftChange(event.target.value)}
-      onKeyDown={(event) => {
-        if (isImeKey(event)) return
-        if (event.key === 'Enter' && !event.shiftKey) {
-          event.preventDefault()
-          onSubmit()
-        }
-      }}
-    />
+    <div className="flyover-compose-shell">
+      <span
+        className={cn(
+          'mb-0.5 grid size-6 shrink-0 place-items-center rounded-full transition-colors',
+          draft.length > 0
+            ? 'text-muted-foreground'
+            : 'bg-foreground/10 text-foreground ring-1 ring-foreground/10'
+        )}
+        title={draft.length > 0 ? 'در حال نوشتن' : 'میکروفن فعاله'}
+      >
+        {draft.length > 0 ? (
+          <Keyboard className="size-3.5" aria-hidden="true" />
+        ) : (
+          <Mic className="size-3.5" aria-hidden="true" />
+        )}
+      </span>
+      <textarea
+        ref={inputRef}
+        className="flyover-compose"
+        value={draft}
+        rows={1}
+        dir={detectTextDirection(draft)}
+        placeholder="بنویس یا حرف بزن…"
+        aria-label="پیام برای میکی؛ بنویس یا حرف بزن"
+        autoFocus
+        onChange={(event) => onDraftChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (isImeKey(event)) return
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault()
+            onSubmit()
+          }
+        }}
+      />
+      <Button
+        size="icon-xs"
+        className="shrink-0 rounded-full"
+        aria-label="ارسال پیام"
+        disabled={!draft.trim()}
+        onClick={onSubmit}
+      >
+        <ArrowUp />
+      </Button>
+    </div>
   )
 }
 
@@ -141,7 +164,6 @@ export function FlyoverApp(): React.JSX.Element {
   const previousPhase = useRef(snapshot.phase)
   const [draft, setDraft] = useState('')
   const composing = snapshot.phase === 'composing'
-  const typing = composing || draft.length > 0
   const showComposer =
     snapshot.visible && snapshot.canCompose && snapshot.mode === 'assistant' && !snapshot.canApprove
 
@@ -210,11 +232,15 @@ export function FlyoverApp(): React.JSX.Element {
     snapshot.canApprove ||
     snapshot.canRespondToDisclosure ||
     snapshot.canOpenModels
+  const layout = getFlyoverLayout(
+    snapshot.detail ? `${snapshot.text}\n${snapshot.detail}` : snapshot.text
+  )
 
   return (
     <main className="flex h-full items-start justify-center p-2" dir="rtl">
       <section
         className="flyover-surface flex w-full flex-col gap-3 rounded-[1.5rem] border border-border/70 bg-card/95 px-3.5 py-3.5 shadow-2xl backdrop-blur-xl"
+        data-layout={layout}
         aria-live="polite"
       >
         <div className="flex w-full items-start gap-3.5">
@@ -240,7 +266,10 @@ export function FlyoverApp(): React.JSX.Element {
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5 text-start">
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-[0.68rem] font-medium tracking-wide text-muted-foreground">
+              <span
+                className="truncate text-[0.68rem] font-medium tracking-wide text-muted-foreground"
+                dir={detectTextDirection(snapshot.title)}
+              >
                 {snapshot.title}
               </span>
               <span
@@ -249,17 +278,13 @@ export function FlyoverApp(): React.JSX.Element {
                 aria-hidden="true"
               />
             </div>
-            <div className="relative min-w-0">
-              {typing ? null : (
-                <FlyoverCopy
-                  text={snapshot.text}
-                  animate={snapshot.phase === 'listening' || snapshot.phase === 'reply'}
-                  caret={showComposer}
-                />
-              )}
+            <div className="flex min-w-0 flex-col gap-2">
+              <FlyoverCopy
+                text={snapshot.text}
+                animate={snapshot.phase === 'listening' || snapshot.phase === 'reply'}
+              />
               {showComposer ? (
                 <FlyoverCompose
-                  composing={typing}
                   draft={draft}
                   onDraftChange={(text) => {
                     setDraft(text)
@@ -275,15 +300,18 @@ export function FlyoverApp(): React.JSX.Element {
               ) : null}
             </div>
             {detailsOpen && snapshot.detail ? (
-              <code className="block truncate text-[0.62rem] text-muted-foreground" dir="ltr">
+              <code
+                className="flyover-detail block text-[0.62rem] text-muted-foreground"
+                dir={detectTextDirection(snapshot.detail)}
+              >
                 {snapshot.detail}
               </code>
             ) : snapshot.hint ? (
-              <p className="flex items-center gap-1 text-[0.66rem] text-muted-foreground">
-                {showComposer ? (
-                  <Keyboard className="size-3 shrink-0" aria-hidden="true" />
-                ) : null}
-                <span className="truncate">{snapshot.hint}</span>
+              <p
+                className="truncate text-[0.66rem] text-muted-foreground"
+                dir={detectTextDirection(snapshot.hint)}
+              >
+                {snapshot.hint}
               </p>
             ) : null}
             {snapshot.phase === 'confirm' && snapshot.detail ? (
@@ -312,7 +340,11 @@ export function FlyoverApp(): React.JSX.Element {
         {hasActions ? (
           <div className="flex flex-wrap items-center justify-end gap-1.5">
             {snapshot.canFinish ? (
-              <Button size="icon-sm" variant="secondary" onClick={window.flyoverApi.finishDictation}>
+              <Button
+                size="icon-sm"
+                variant="secondary"
+                onClick={window.flyoverApi.finishDictation}
+              >
                 <Square data-icon="inline-start" />
                 <span className="sr-only">پایان دیکته</span>
               </Button>
