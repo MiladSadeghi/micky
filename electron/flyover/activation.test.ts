@@ -69,7 +69,7 @@ test('hides a mirrored task without stopping its main-window session', () => {
 })
 
 test('conceals an active flyover task instead of stopping the agent', () => {
-  for (const conversationMode of ['agent', 'confirm', 'followup'] as const) {
+  for (const conversationMode of ['agent', 'confirm'] as const) {
     assert.equal(
       assistantShortcutAction({
         flyoverActive: true,
@@ -80,6 +80,22 @@ test('conceals an active flyover task instead of stopping the agent', () => {
         dictationActive: false
       }),
       'hide-ongoing'
+    )
+  }
+})
+
+test('stops followup listening when hiding a finished flyover', () => {
+  for (const flyoverMirroring of [false, true]) {
+    assert.equal(
+      assistantShortcutAction({
+        flyoverActive: true,
+        flyoverVisible: true,
+        flyoverMirroring,
+        conversationMode: 'followup',
+        speechActive: true,
+        dictationActive: false
+      }),
+      'stop-session'
     )
   }
 })

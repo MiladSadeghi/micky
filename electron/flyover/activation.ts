@@ -27,6 +27,7 @@ export function assistantShortcutAction(input: {
 }): AssistantShortcutAction {
   if (input.flyoverActive) {
     if (!input.flyoverVisible) return 'reveal-ongoing'
+    if (input.conversationMode === 'followup') return 'stop-session'
     if (input.flyoverMirroring) return 'hide-mirror'
     if (input.conversationMode !== 'idle') {
       return 'hide-ongoing'
