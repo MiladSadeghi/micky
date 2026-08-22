@@ -13,6 +13,10 @@ export function shouldShowWakeFlyover(
   return activation.source === 'wake-word' && !mainWindowFocused
 }
 
+export function shouldInterruptForWakeWordResume(conversationMode: ConversationMode): boolean {
+  return conversationMode === 'idle'
+}
+
 export function assistantShortcutAction(input: {
   flyoverActive: boolean
   flyoverVisible: boolean

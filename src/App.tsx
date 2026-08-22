@@ -48,7 +48,7 @@ const PHASE_LABEL = {
   listening: 'بگو «میکی» یا «هی میکی»',
   activated: 'گوش می‌دم…',
   followup: 'ادامه بده…',
-  confirm: 'بگو آره یا نه',
+  confirm: 'تأیید یا رد کن',
   error: 'میکروفن در دسترس نیست'
 } as const
 
@@ -58,7 +58,7 @@ const ORB_STATE: Record<keyof typeof PHASE_LABEL, OrbState> = {
   listening: 'breathing',
   activated: 'listening',
   followup: 'listening',
-  confirm: 'listening',
+  confirm: 'breathing',
   error: 'shaping'
 }
 
@@ -136,7 +136,6 @@ function App(): React.JSX.Element {
   const isFollowup = conversation?.mode === 'followup'
   const isConfirm = conversation?.mode === 'confirm' || agent?.phase === 'confirm'
   const followupOpen = isFollowup && !conversation?.followupHeard
-  const confirmOpen = isConfirm && !conversation?.followupHeard
   const isLoading = phase === 'loading'
   const hasInstalledModel = models?.models.some((model) => model.state === 'installed') ?? false
   const modelUnavailable = models !== null && !hasInstalledModel
@@ -206,7 +205,7 @@ function App(): React.JSX.Element {
           : agent?.phase === 'tool'
             ? 'searching'
             : agent?.phase === 'confirm'
-              ? 'listening'
+              ? 'breathing'
               : agent?.phase === 'speaking'
                 ? 'composing'
                 : speech?.phase === 'finalizing' || (isActivated && transcript?.isFinal)
@@ -352,13 +351,11 @@ function App(): React.JSX.Element {
           data-phase={
             modelUnavailable
               ? 'disabled'
-              : agent?.phase === 'confirm'
-                ? 'activated'
-                : responseBusy
-                  ? 'thinking'
-                  : isActivated || isFollowup
-                    ? 'activated'
-                    : phase
+              : responseBusy
+                ? 'thinking'
+                : isActivated || isFollowup
+                  ? 'activated'
+                  : phase
           }
           onClick={handleOrbClick}
           disabled={isLoading && !modelUnavailable}
@@ -376,8 +373,7 @@ function App(): React.JSX.Element {
           aria-pressed={isActivated || responseBusy || isFollowup}
         >
           <span className="orb-aura" aria-hidden="true" />
-          {(followupOpen && conversation?.followupUntil) ||
-          (confirmOpen && conversation?.followupUntil) ? (
+          {followupOpen && conversation?.followupUntil ? (
             <FollowupTimer
               key={conversation?.followupUntil}
               until={conversation?.followupUntil ?? 0}

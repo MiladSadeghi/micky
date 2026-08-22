@@ -55,6 +55,9 @@ test('uses a compact written contract for flyover replies', () => {
   assert.match(prompt, /compact flyover/)
   assert.match(prompt, /will not be spoken/)
   assert.match(prompt, /Normal digits and punctuation are fine/)
+  assert.match(prompt, /Lightweight Markdown is supported/)
+  assert.match(prompt, /compact tables/)
+  assert.match(prompt, /Do not use images, raw HTML, long code fences/)
   assert.doesNotMatch(prompt, /speech playback is enabled/)
 })
 

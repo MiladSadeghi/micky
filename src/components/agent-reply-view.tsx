@@ -83,18 +83,7 @@ function ApprovalCard({
         </div>
       </div>
 
-      <p className="approval-hint">فقط با اجازه تو اجرا می‌شه.</p>
-
-      <div className="flex w-full gap-2" dir="rtl">
-        <Button className="flex-1" onClick={onApprove} disabled={!onApprove}>
-          <Check data-icon="inline-start" />
-          انجامش بده
-        </Button>
-        <Button variant="secondary" className="flex-1" onClick={onDeny} disabled={!onDeny}>
-          <X data-icon="inline-start" />
-          نه، بی‌خیال
-        </Button>
-      </div>
+      <p className="approval-hint">تا انتخاب نکنی، کاری انجام نمی‌شه.</p>
 
       {detail ? (
         <>
@@ -106,12 +95,23 @@ function ApprovalCard({
             aria-expanded={revealed}
           >
             <Terminal data-icon="inline-start" />
-            {revealed ? 'بستن جزئیات' : 'دیدن دستور'}
+            {revealed ? 'بستن جزئیات' : 'دیدن جزئیات'}
             <ChevronDown data-icon="inline-end" className={revealed ? 'rotate-180' : undefined} />
           </Button>
           {revealed ? <pre className="tool-confirm-detail">{detail}</pre> : null}
         </>
       ) : null}
+
+      <div className="grid w-full grid-cols-[1.15fr_1fr] gap-2" dir="rtl">
+        <Button size="lg" className="w-full" onClick={onApprove} disabled={!onApprove}>
+          <Check data-icon="inline-start" />
+          اجازه بده
+        </Button>
+        <Button size="lg" variant="outline" className="w-full" onClick={onDeny} disabled={!onDeny}>
+          <X data-icon="inline-start" />
+          رد کن
+        </Button>
+      </div>
     </section>
   )
 }

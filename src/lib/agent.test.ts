@@ -20,7 +20,7 @@ test('uses a specific spoken status for each tool', () => {
 
 test('falls back to thinking copy when no tool is running', () => {
   assert.equal(agentStatusLabel('thinking'), 'دارم فکر می‌کنم…')
-  assert.equal(agentStatusLabel('confirm'), 'بگو آره یا نه')
+  assert.equal(agentStatusLabel('confirm'), 'تأیید یا رد کن')
   assert.equal(agentStatusLabel('error'), '…')
 })
 

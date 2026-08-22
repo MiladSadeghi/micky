@@ -176,6 +176,33 @@ test('conceals and restores an ongoing task without clearing its state', () => {
   assert.equal(window.showCount, 2)
 })
 
+test('forces a concealed flyover open when an approval is requested', () => {
+  const window = fakeWindow()
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(window)
+  service.show({
+    mode: 'assistant',
+    phase: 'tool',
+    title: 'میکی',
+    text: 'دارم آماده می‌کنم…'
+  })
+  service.conceal()
+
+  service.show({
+    mode: 'assistant',
+    phase: 'confirm',
+    title: 'تأیید لازم است',
+    text: 'این کار رو انجام بدم؟',
+    interactive: true,
+    canApprove: true
+  })
+
+  assert.equal(service.getSnapshot().visible, true)
+  assert.equal(service.getSnapshot().phase, 'confirm')
+  assert.equal(service.getSnapshot().canApprove, true)
+  assert.equal(window.showCount, 1)
+})
+
 test('keeps the window shown across in-place updates and preserves a screen preview', () => {
   const window = fakeWindow()
   const service = new FlyoverService(() => undefined)

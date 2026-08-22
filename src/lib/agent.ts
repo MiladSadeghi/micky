@@ -80,7 +80,7 @@ const TOOL_NAME_LABEL: Record<string, string> = {
 }
 
 export function agentStatusLabel(phase: AgentPhase | string, toolName?: string | null): string {
-  if (phase === 'confirm') return 'بگو آره یا نه'
+  if (phase === 'confirm') return 'تأیید یا رد کن'
   if (phase === 'tool') {
     return (toolName && TOOL_STATUS_LABEL[toolName]) || 'یک لحظه…'
   }

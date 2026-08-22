@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CONFIRM_WINDOW_MS, FOLLOWUP_WINDOW_MS } from '@/lib/conversation'
+import { FOLLOWUP_WINDOW_MS } from '@/lib/conversation'
 import { ConversationController } from './controller'
 
 type Harness = ReturnType<typeof createHarness>
@@ -32,8 +32,16 @@ function createHarness(
   }
   const wake = {
     resumed: 0,
+    capturePaused: 0,
+    externalStarted: 0,
     resumeListening() {
       this.resumed += 1
+    },
+    pauseCapture() {
+      this.capturePaused += 1
+    },
+    beginExternalSession() {
+      this.externalStarted += 1
     }
   }
   const agent = {
@@ -112,6 +120,30 @@ test('opens a longer followup listen window after the agent finishes', async () 
   assert.equal(status.followupHeard, false)
   assert.ok(status.followupUntil)
   assert.ok((status.followupUntil ?? 0) - Date.now() > FOLLOWUP_WINDOW_MS - 250)
+  assert.equal(harness.wake.capturePaused, 1)
+  assert.equal(harness.wake.externalStarted, 1)
+})
+
+test('releases microphone capture for the full agent turn', async () => {
+  let finishAgent: (result: 'completed') => void = () => {}
+  const harness = createHarness(
+    () =>
+      new Promise<'completed'>((resolve) => {
+        finishAgent = resolve
+      })
+  )
+
+  harness.controller.onFinalTranscript('فایل‌هام رو بررسی کن')
+  await waitForMode(harness, 'agent')
+
+  assert.equal(harness.wake.capturePaused, 1)
+  assert.equal(harness.wake.externalStarted, 0)
+  assert.equal(harness.speech.started, 0)
+
+  finishAgent('completed')
+  await waitForFollowup(harness)
+  assert.equal(harness.wake.externalStarted, 1)
+  assert.equal(harness.speech.started, 1)
 })
 
 test('keeps listening if the user starts speaking during followup', async (t) => {
@@ -439,37 +471,25 @@ function armConfirmRespond(harness: Harness, purpose = 'می‌خوام این �
   }
 }
 
-test('speaks the approval question before opening the microphone', async () => {
+test('holds approval as a click-only state without TTS or microphone capture', async () => {
   const harness = createHarness()
-  let finishPrompt: () => void = () => {}
-  let callCount = 0
-  harness.tts.speak = async (text: string) => {
-    harness.tts.spoken.push(text)
-    callCount += 1
-    if (callCount === 1) {
-      await new Promise<void>((resolve) => {
-        finishPrompt = resolve
-      })
-    }
-    return 'completed'
-  }
   armConfirmRespond(harness, 'می‌خوام پوشه دانلودها رو پاک کنم.')
 
   harness.controller.onFinalTranscript('پوشه دانلودها رو پاک کن')
   await waitForMode(harness, 'confirm')
 
-  assert.deepEqual(harness.tts.spoken, ['می‌خوام پوشه دانلودها رو پاک کنم؛ انجامش بدم؟'])
+  assert.deepEqual(harness.tts.spoken, [])
   assert.equal(harness.speech.started, 0)
+  assert.equal(harness.speech.cancelled, 1)
+  assert.equal(harness.wake.externalStarted, 0)
   assert.equal(harness.controller.getStatus().followupUntil, null)
 
-  finishPrompt()
-  await waitForMode(harness, 'confirm', 1)
-  assert.ok(harness.controller.getStatus().followupUntil)
   harness.controller.resolveApproval(false)
-  await waitForFollowup(harness, 2)
+  assert.deepEqual(harness.agent.resolved, [false])
+  await waitForFollowup(harness)
 })
 
-test('shows approval without speaking it in a visual-only shortcut session', async () => {
+test('keeps visual-only shortcut approval click-only too', async () => {
   const harness = createHarness(
     async () => 'completed',
     () => false
@@ -477,61 +497,60 @@ test('shows approval without speaking it in a visual-only shortcut session', asy
   armConfirmRespond(harness)
 
   harness.controller.onFinalTranscript('این دستور رو اجرا کن')
-  await waitForMode(harness, 'confirm', 1)
+  await waitForMode(harness, 'confirm')
 
   assert.deepEqual(harness.tts.spoken, [])
-  assert.ok(harness.controller.getStatus().followupUntil)
+  assert.equal(harness.speech.started, 0)
+  assert.equal(harness.controller.getStatus().followupUntil, null)
   harness.controller.resolveApproval(false)
-  await waitForFollowup(harness, 2)
+  await waitForFollowup(harness)
 })
 
-test('opens a confirm listen window and treats آره as approval', async () => {
+test('ignores speech while approval is pending and accepts an explicit click', async () => {
   const harness = createHarness()
   armConfirmRespond(harness)
   harness.controller.onFinalTranscript('سافاری رو باز کن')
-  await waitForMode(harness, 'confirm', 1)
+  await waitForMode(harness, 'confirm')
 
   harness.controller.onFinalTranscript('آره')
+  harness.controller.onPartialTranscript('آره')
+  harness.controller.sendText('yes')
+  harness.controller.onSpeechSessionEnd()
+  assert.deepEqual(harness.agent.resolved, [])
+  assert.equal(harness.controller.getStatus().mode, 'confirm')
+
+  harness.controller.resolveApproval(true)
   assert.deepEqual(harness.agent.resolved, [true])
-  await waitForFollowup(harness, 2)
+  await waitForFollowup(harness)
   assert.equal(harness.controller.getStatus().mode, 'followup')
 })
 
-test('treats نه as a denial and still returns to followup', async () => {
+test('an explicit deny click returns the conversation to followup', async () => {
   const harness = createHarness()
   armConfirmRespond(harness)
   harness.controller.onFinalTranscript('حذف کن')
-  await waitForMode(harness, 'confirm', 1)
+  await waitForMode(harness, 'confirm')
 
-  harness.controller.onFinalTranscript('نه')
+  harness.controller.resolveApproval(false)
   assert.deepEqual(harness.agent.resolved, [false])
-  await waitForFollowup(harness, 2)
+  await waitForFollowup(harness)
 })
 
-test('keeps listening when the approval answer is unclear', async () => {
-  const harness = createHarness()
-  armConfirmRespond(harness)
-  harness.controller.onFinalTranscript('یه دستور اجرا کن')
-  await waitForMode(harness, 'confirm', 1)
-
-  harness.controller.onFinalTranscript('چی گفتی')
-  await waitForMode(harness, 'confirm', 2)
-
-  assert.deepEqual(harness.agent.resolved, [])
-  harness.controller.onFinalTranscript('نه')
-  assert.deepEqual(harness.agent.resolved, [false])
-  await waitForFollowup(harness, 3)
-})
-
-test('denies a confirm request when the window times out', async (t) => {
+test('does not resolve or resume the agent when approval sits inactive', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const harness = createHarness()
   armConfirmRespond(harness)
-  harness.controller.onFinalTranscript('نصب کن')
-  await waitForMode(harness, 'confirm', 1)
+  harness.controller.onFinalTranscript('یه دستور اجرا کن')
+  await waitForMode(harness, 'confirm')
 
-  t.mock.timers.tick(CONFIRM_WINDOW_MS)
-  assert.deepEqual(harness.agent.resolved, [false])
+  t.mock.timers.tick(60 * 60 * 1_000)
+
+  assert.deepEqual(harness.agent.resolved, [])
+  assert.equal(harness.controller.getStatus().mode, 'confirm')
+  assert.equal(harness.controller.getStatus().followupUntil, null)
+  assert.equal(harness.speech.started, 0)
+
+  harness.controller.resolveApproval(false)
   await waitForFollowup(harness)
 })
 
@@ -539,7 +558,7 @@ test('denies a confirm request when the conversation is interrupted', async () =
   const harness = createHarness()
   armConfirmRespond(harness)
   harness.controller.onFinalTranscript('نصب کن')
-  await waitForMode(harness, 'confirm', 1)
+  await waitForMode(harness, 'confirm')
 
   harness.controller.onWakeActivated()
   assert.deepEqual(harness.agent.resolved, [false])

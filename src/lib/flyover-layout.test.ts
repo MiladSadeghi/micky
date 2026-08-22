@@ -15,3 +15,22 @@ test('counts visible characters instead of UTF-16 code units', () => {
   assert.equal(getFlyoverLayout('🙂'.repeat(180)), 'compact')
   assert.equal(getFlyoverLayout('🙂'.repeat(181)), 'expanded')
 })
+
+test('widens immediately for Markdown tables and fenced code', () => {
+  assert.equal(getFlyoverLayout('| نام | مقدار |\n| --- | --- |\n| سرعت | خوب |'), 'wide')
+  assert.equal(getFlyoverLayout('```ts\nconst ready = true\n```'), 'wide')
+})
+
+test('adds height when structured content has many rows', () => {
+  const table = [
+    '| نام | مقدار |',
+    '| --- | --- |',
+    ...Array.from({ length: 8 }, (_, index) => `| مورد ${index + 1} | ${index + 1} |`)
+  ].join('\n')
+
+  assert.equal(getFlyoverLayout(table), 'wide-reading')
+})
+
+test('expands multi-item lists even when their character count is short', () => {
+  assert.equal(getFlyoverLayout('- یک\n- دو\n- سه'), 'expanded')
+})

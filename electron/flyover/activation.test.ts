@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assistantShortcutAction, mainWindowFocusAction, shouldShowWakeFlyover } from './activation'
+import {
+  assistantShortcutAction,
+  mainWindowFocusAction,
+  shouldInterruptForWakeWordResume,
+  shouldShowWakeFlyover
+} from './activation'
 
 const WAKE_ACTIVATION = {
   source: 'wake-word',
@@ -15,6 +20,13 @@ test('shows the flyover for a background wake-word activation', () => {
 
 test('does not show the background flyover for manual orb activation', () => {
   assert.equal(shouldShowWakeFlyover({ ...WAKE_ACTIVATION, source: 'manual' }, false), false)
+})
+
+test('wake-word mute does not interrupt an ongoing conversation flow', () => {
+  assert.equal(shouldInterruptForWakeWordResume('idle'), true)
+  assert.equal(shouldInterruptForWakeWordResume('agent'), false)
+  assert.equal(shouldInterruptForWakeWordResume('confirm'), false)
+  assert.equal(shouldInterruptForWakeWordResume('followup'), false)
 })
 
 test('reveals a main-window task instead of starting a new shortcut session', () => {

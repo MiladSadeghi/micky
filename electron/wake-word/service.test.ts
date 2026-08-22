@@ -114,6 +114,37 @@ test('stays muted when worker initialization finishes and resets before enabling
   assert.equal(service.getStatus().phase, 'listening')
 })
 
+test('pauses microphone capture without ending the external session', () => {
+  const { service, worker } = createHarness()
+  service.initialize()
+  worker.emit('message', { type: 'ready' })
+  service.beginExternalSession()
+
+  service.pauseCapture()
+
+  assert.deepEqual(
+    {
+      enabled: service.getStatus().enabled,
+      phase: service.getStatus().phase,
+      captureRequested: service.getStatus().captureRequested
+    },
+    { enabled: true, phase: 'activated', captureRequested: false }
+  )
+
+  service.setEnabled(false)
+  service.setEnabled(true)
+  assert.equal(service.getStatus().phase, 'activated')
+  assert.equal(service.getStatus().captureRequested, false)
+
+  for (const resetId of resetIds(worker)) {
+    worker.emit('message', { type: 'reset', id: resetId })
+  }
+  assert.equal(service.getStatus().captureRequested, false)
+
+  service.beginExternalSession()
+  assert.equal(service.getStatus().captureRequested, true)
+})
+
 test('retries a runtime inference error without terminating the ready worker', () => {
   const { service, worker } = createHarness()
   service.initialize()

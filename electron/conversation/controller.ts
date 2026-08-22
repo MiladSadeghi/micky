@@ -1,8 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
-import { interpretApproval } from '@/lib/approval'
 import {
-  CONFIRM_WINDOW_MS,
   FOLLOWUP_WINDOW_MS,
   INITIAL_CONVERSATION_STATUS,
   CONVERSATION_STATUS_CHANNEL,
@@ -55,7 +53,7 @@ export class ConversationController {
 
   onApprovalNeeded(): void {
     if (this.#mode !== 'agent' && this.#mode !== 'confirm') return
-    void this.#startConfirm()
+    this.#startConfirm()
   }
 
   resolveApproval(approved: boolean): void {
@@ -65,28 +63,13 @@ export class ConversationController {
   sendText(text: string): void {
     const trimmed = text.trim()
     if (!trimmed) return
-    if (this.#mode === 'confirm') {
-      this.onFinalTranscript(trimmed)
-      return
-    }
+    if (this.#mode === 'confirm') return
     void this.#runAgent(trimmed)
   }
 
   onFinalTranscript(text: string): void {
     const trimmed = text.trim()
-    if (this.#mode === 'confirm') {
-      if (!trimmed) {
-        void this.#keepConfirmListening()
-        return
-      }
-      const approval = interpretApproval(trimmed)
-      if (approval === 'unknown') {
-        void this.#keepConfirmListening()
-        return
-      }
-      this.#settleApproval(approval === 'yes')
-      return
-    }
+    if (this.#mode === 'confirm') return
 
     if (this.#mode === 'followup') {
       if (!hasSpokenText(trimmed)) {
@@ -110,7 +93,7 @@ export class ConversationController {
   }
 
   onPartialTranscript(text: string): void {
-    if ((this.#mode !== 'followup' && this.#mode !== 'confirm') || !hasSpokenText(text)) return
+    if (this.#mode !== 'followup' || !hasSpokenText(text)) return
     this.#clearFollowupTimer()
     if (this.#status.followupHeard) return
     this.#setStatus({
@@ -121,7 +104,7 @@ export class ConversationController {
   }
 
   holdListenWindow(): void {
-    if (this.#mode !== 'followup' && this.#mode !== 'confirm') return
+    if (this.#mode !== 'followup') return
     this.#clearFollowupTimer()
     if (this.#status.followupHeard) return
     this.#setStatus({
@@ -133,10 +116,7 @@ export class ConversationController {
 
   onSpeechSessionEnd(): void {
     if (this.#mode === 'agent') return
-    if (this.#mode === 'confirm') {
-      if (this.options.getSpeech()?.getStatus().phase === 'error') this.#settleApproval(false)
-      return
-    }
+    if (this.#mode === 'confirm') return
     if (this.#mode === 'followup') {
       if (this.options.getSpeech()?.getStatus().phase === 'error') this.#idleAndResume()
       return
@@ -241,6 +221,7 @@ export class ConversationController {
     const usesMainSurface = this.#shouldUseVoice()
     const speechEnabled =
       usesMainSurface && this.options.getTts()?.getSnapshot().configured === true
+    this.options.getWakeWord()?.pauseCapture()
     this.#setStatus({ mode: 'agent', followupUntil: null, followupHeard: false })
     const result = await agent.respond(text, {
       responseSurface: usesMainSurface ? 'main' : 'flyover',
@@ -288,76 +269,24 @@ export class ConversationController {
     await this.#startFollowup(generation)
   }
 
-  async #startConfirm(): Promise<void> {
+  #startConfirm(): void {
     this.#clearFollowupTimer()
     this.#followupDeadline = null
+    this.options.getTts()?.stop()
+    this.options.getSpeech()?.cancelSession()
+    this.options.getWakeWord()?.pauseCapture()
     this.#setStatus({
       mode: 'confirm',
       followupUntil: null,
       followupHeard: false
     })
-    const generation = this.#generation
-    const purpose = this.options.getAgent()?.getStatus().turn?.confirmText
-    if (this.#shouldUseVoice()) {
-      await this.options.getTts()?.speak(spokenApprovalPrompt(purpose))
-    }
-    if (generation !== this.#generation || this.#mode !== 'confirm') return
-
-    this.#followupDeadline = Date.now() + CONFIRM_WINDOW_MS
-    this.#setStatus({
-      mode: 'confirm',
-      followupUntil: this.#followupDeadline,
-      followupHeard: false
-    })
-    await this.options.getSpeech()?.startSession({ preroll: false })
-    if (generation !== this.#generation || this.#mode !== 'confirm') return
-    this.#armConfirmTimer()
-  }
-
-  async #keepConfirmListening(): Promise<void> {
-    if (this.#mode !== 'confirm') return
-    const remaining = (this.#followupDeadline ?? 0) - Date.now()
-    if (remaining <= 150) {
-      this.#settleApproval(false)
-      return
-    }
-    const generation = this.#generation
-    this.#setStatus({
-      mode: 'confirm',
-      followupUntil: this.#followupDeadline,
-      followupHeard: false
-    })
-    await this.options.getSpeech()?.startSession({ preroll: false })
-    if (generation !== this.#generation || this.#mode !== 'confirm') return
-    if (!this.#followupTimer) this.#armConfirmTimer()
-  }
-
-  #armConfirmTimer(): void {
-    const deadline = this.#followupDeadline
-    if (!deadline) return
-    const remaining = deadline - Date.now()
-    if (remaining <= 0) {
-      this.#settleApproval(false)
-      return
-    }
-    this.#clearFollowupTimer()
-    this.#setStatus({
-      mode: 'confirm',
-      followupUntil: deadline,
-      followupHeard: this.#status.followupHeard
-    })
-    if (this.#status.followupHeard) return
-    this.#followupTimer = setTimeout(() => {
-      this.#followupTimer = null
-      if (this.#mode !== 'confirm' || this.#status.followupHeard) return
-      this.#settleApproval(false)
-    }, remaining)
   }
 
   #settleApproval(approved: boolean): void {
     if (this.#mode !== 'confirm') return
     this.#clearFollowupTimer()
     this.#followupDeadline = null
+    this.options.getWakeWord()?.pauseCapture()
     this.#setStatus({ mode: 'agent', followupUntil: null, followupHeard: false })
     this.options.getTts()?.stop()
     this.options.getSpeech()?.cancelSession()
@@ -371,6 +300,7 @@ export class ConversationController {
       followupUntil: this.#followupDeadline,
       followupHeard: false
     })
+    this.options.getWakeWord()?.beginExternalSession()
     await this.options.getSpeech()?.startSession({ preroll: false })
     if (generation !== this.#generation || this.#mode !== 'followup') return
     this.#armFollowupTimer()
@@ -390,6 +320,7 @@ export class ConversationController {
       followupUntil: this.#followupDeadline,
       followupHeard: false
     })
+    this.options.getWakeWord()?.beginExternalSession()
     await this.options.getSpeech()?.startSession({ preroll: false })
     if (generation !== this.#generation || this.#mode !== 'followup') return
     if (!this.#followupTimer) this.#armFollowupTimer()
@@ -450,11 +381,4 @@ export class ConversationController {
     clearTimeout(this.#followupTimer)
     this.#followupTimer = null
   }
-}
-
-function spokenApprovalPrompt(purpose?: string | null): string {
-  const trimmed = purpose?.trim().replace(/[.!…،؛]+$/u, '')
-  if (!trimmed) return 'این کار رو انجام بدم؟'
-  if (/[؟?]$/u.test(trimmed)) return trimmed
-  return `${trimmed}؛ انجامش بدم؟`
 }

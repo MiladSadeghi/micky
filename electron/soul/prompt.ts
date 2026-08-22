@@ -107,7 +107,7 @@ export function buildSystemPrompt(
 function responseContract(surface: AgentResponseSurface, speechEnabled: boolean): string {
   if (surface === 'flyover') {
     return `Response surface: compact flyover
-The answer appears on a small card and will not be spoken. Use concise plain text, normally one short paragraph and no more than five short sentences. Normal digits and punctuation are fine. Do not use markdown, headings, tables, code fences, or emoji. Include short code only when explicitly requested.`
+The answer appears on a small card and will not be spoken. Keep it concise: normally one short paragraph and no more than five short sentences. Normal digits and punctuation are fine. Lightweight Markdown is supported when it improves scanning: emphasis, short headings, links, brief lists, inline code, and compact tables. Use a table only for genuinely tabular comparisons and keep it small. Do not use images, raw HTML, long code fences, or emoji. Include short code only when explicitly requested.`
   }
   if (speechEnabled) {
     return `Response surface: main app

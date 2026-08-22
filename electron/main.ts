@@ -73,6 +73,7 @@ import { getFlyoverConversationPreview } from './flyover/context'
 import {
   assistantShortcutAction,
   mainWindowFocusAction,
+  shouldInterruptForWakeWordResume,
   shouldShowWakeFlyover
 } from './flyover/activation'
 import {
@@ -1356,27 +1357,31 @@ function submitFlyoverCompose(text: string): void {
 
 function handleAgentStatus(status: AgentStatus): void {
   const turn = status.turn
-  if (turn?.phase === 'confirm' && turn.turnId !== lastConfirmEarconTurnId) {
-    lastConfirmEarconTurnId = turn.turnId
-    sendEarcon('confirm')
-  }
-  if (turn && turn.phase !== 'confirm') lastConfirmEarconTurnId = null
-  if (!assistantFlyoverActive) return
-  if (!turn) return
-  if (turn.phase === 'confirm') {
-    flyoverService?.reveal({
+  if (turn?.phase === 'confirm') {
+    if (!assistantFlyoverActive) assistantFlyoverMirroring = true
+    assistantFlyoverActive = true
+    assistantFlyoverComposing = false
+    assistantFlyoverTyped = false
+    clearFlyoverIdleDismiss()
+    flyoverService?.show({
       mode: 'assistant',
       phase: 'confirm',
       title: 'تأیید لازم است',
       text: turn.confirmText ?? 'این کار رو انجام بدم؟',
-      hint: 'بگو آره یا نه، یا یکی از گزینه‌ها را بزن',
+      hint: 'تا انتخاب نکنی، کاری انجام نمی‌شه',
       detail: turn.confirmDetail,
       interactive: true,
       canCompose: false,
       canApprove: true
     })
+    if (turn.turnId !== lastConfirmEarconTurnId) {
+      lastConfirmEarconTurnId = turn.turnId
+      sendEarcon('confirm')
+    }
     return
   }
+  lastConfirmEarconTurnId = null
+  if (!assistantFlyoverActive || !turn) return
   const reply = turn.replyText.trim()
   const phase =
     turn.phase === 'tool'
@@ -1542,6 +1547,8 @@ function startRuntime(): void {
       void speechService?.startSession()
     },
     onResume: () => {
+      const mode = conversation?.getStatus().mode ?? 'idle'
+      if (!shouldInterruptForWakeWordResume(mode)) return
       conversation?.onWakeResume()
       speechService?.cancelSession()
     }

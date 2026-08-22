@@ -41,6 +41,7 @@ export class WakeWordService {
   #workerReady = false
   #resetId = 0
   #pendingResumeResetId: number | null = null
+  #captureSuppressed = false
   #status: WakeWordStatus = INITIAL_WAKE_WORD_STATUS
   #lastScoreBroadcast = 0
   #disposed = false
@@ -75,10 +76,16 @@ export class WakeWordService {
       this.#update({ phase: 'disabled', captureRequested: false })
     } else if (this.#worker) {
       if (this.#workerReady) {
-        this.#resetWorker(true)
-        this.#update({ phase: 'loading', captureRequested: false })
+        this.#resetWorker(!this.#captureSuppressed)
+        this.#update({
+          phase: this.#captureSuppressed ? 'activated' : 'loading',
+          captureRequested: false
+        })
       } else {
-        this.#update({ phase: 'loading', captureRequested: false })
+        this.#update({
+          phase: this.#captureSuppressed ? 'activated' : 'loading',
+          captureRequested: false
+        })
       }
     } else {
       this.#startWorker()
@@ -127,11 +134,24 @@ export class WakeWordService {
   }
 
   beginExternalSession(): void {
+    this.#captureSuppressed = false
     this.#worker?.postMessage({ type: 'reset' })
     this.#update({ phase: 'activated', captureRequested: true, latestScore: 0, error: null })
   }
 
+  pauseCapture(): void {
+    this.#captureSuppressed = true
+    this.#resetWorker(false)
+    this.#update({
+      phase: this.#status.enabled ? 'activated' : 'disabled',
+      captureRequested: false,
+      latestScore: 0,
+      error: null
+    })
+  }
+
   endExternalSession(): void {
+    this.#captureSuppressed = false
     if (!this.#status.enabled) {
       this.#update({ phase: 'disabled', captureRequested: false, latestScore: 0 })
       return
@@ -140,6 +160,7 @@ export class WakeWordService {
   }
 
   resumeListening(): void {
+    this.#captureSuppressed = false
     this.options.onResume?.()
     if (!this.#status.enabled || !this.#worker) return
     this.#worker.postMessage({ type: 'reset' })
@@ -232,6 +253,15 @@ export class WakeWordService {
     if (message.type === 'ready') {
       this.#workerReady = true
       if (!this.#status.enabled) return
+      if (this.#captureSuppressed) {
+        this.#update({
+          phase: 'activated',
+          captureRequested: false,
+          latestScore: 0,
+          error: null
+        })
+        return
+      }
       this.#update({
         phase: 'listening',
         captureRequested: true,
@@ -244,6 +274,10 @@ export class WakeWordService {
       if (message.id !== this.#pendingResumeResetId) return
       this.#pendingResumeResetId = null
       if (!this.#status.enabled) return
+      if (this.#captureSuppressed) {
+        this.#update({ phase: 'activated', captureRequested: false, latestScore: 0, error: null })
+        return
+      }
       this.#update({ phase: 'listening', captureRequested: true, latestScore: 0, error: null })
       return
     }

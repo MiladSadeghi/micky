@@ -7,11 +7,12 @@ import {
   Keyboard,
   Mic,
   MicOff,
+  ShieldCheck,
   Sparkles,
   Square,
   X
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ThinkingOrb, type OrbState } from 'thinking-orbs'
 import { INITIAL_FLYOVER_SNAPSHOT, type FlyoverSnapshot } from '@/lib/flyover'
 import { Button } from '@/components/ui/button'
@@ -21,19 +22,24 @@ import { DEFAULT_FONT_FAMILY, DEFAULT_THEME, type AppearanceSnapshot } from '@/l
 import { useEarcons } from '@/hooks/use-earcons'
 import { useTypewriter } from '@/hooks/use-typewriter'
 import { getFlyoverLayout } from '@/lib/flyover-layout'
+import { hasFlyoverMarkdown } from '@/lib/flyover-markdown'
 import { detectTextDirection } from '@/lib/text-direction'
 import { playConfirmChime } from '@/lib/wake-chime'
+
+const FlyoverMarkdown = lazy(() =>
+  import('@/components/flyover-markdown').then((module) => ({ default: module.FlyoverMarkdown }))
+)
 
 const FLYOVER_ORB_STATE: Record<FlyoverSnapshot['phase'], OrbState> = {
   hidden: 'breathing',
   listening: 'listening',
   thinking: 'working',
   tool: 'searching',
-  confirm: 'listening',
+  confirm: 'breathing',
   cleaning: 'shaping',
   capturing: 'searching',
   looking: 'searching',
-  disclosure: 'listening',
+  disclosure: 'breathing',
   composing: 'composing',
   reply: 'composing',
   done: 'breathing',
@@ -54,13 +60,22 @@ function FlyoverCopy({ text, animate }: { text: string; animate: boolean }): Rea
   const scrollerRef = useRef<HTMLDivElement>(null)
   const shouldFollowRef = useRef(true)
   const shown = useTypewriter(text, animate)
-
-  useEffect(() => {
+  const followLatestCopy = useCallback(() => {
     const el = scrollerRef.current
     if (!el) return
     if (shouldFollowRef.current) el.scrollTop = el.scrollHeight
     updateCopyScrollState(el)
-  }, [shown])
+  }, [])
+  const plainCopy = (
+    <p className="flyover-plain-copy" dir={detectTextDirection(text)}>
+      {shown || '…'}
+    </p>
+  )
+  const renderMarkdown = shown === text && hasFlyoverMarkdown(text)
+
+  useEffect(() => {
+    followLatestCopy()
+  }, [followLatestCopy, shown])
 
   useEffect(() => {
     shouldFollowRef.current = true
@@ -76,7 +91,13 @@ function FlyoverCopy({ text, animate }: { text: string; animate: boolean }): Rea
         updateCopyScrollState(el)
       }}
     >
-      <p dir={detectTextDirection(text)}>{shown || '…'}</p>
+      {renderMarkdown ? (
+        <Suspense fallback={plainCopy}>
+          <FlyoverMarkdown text={text} onRendered={followLatestCopy} />
+        </Suspense>
+      ) : (
+        plainCopy
+      )}
     </div>
   )
 }
@@ -215,9 +236,11 @@ export function FlyoverApp(): React.JSX.Element {
       ? MicOff
       : snapshot.mode === 'screen'
         ? Eye
-        : snapshot.phase === 'reply' || snapshot.phase === 'cleaning'
-          ? Sparkles
-          : Mic
+        : snapshot.phase === 'confirm'
+          ? ShieldCheck
+          : snapshot.phase === 'reply' || snapshot.phase === 'cleaning'
+            ? Sparkles
+            : Mic
   const active = [
     'listening',
     'thinking',
@@ -338,7 +361,21 @@ export function FlyoverApp(): React.JSX.Element {
           </div>
         ) : null}
         {hasActions ? (
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <div
+            className={cn(
+              snapshot.canApprove || snapshot.canRespondToDisclosure
+                ? 'grid w-full grid-cols-2 gap-2'
+                : 'flex flex-wrap items-center justify-end gap-1.5'
+            )}
+            role={snapshot.canApprove || snapshot.canRespondToDisclosure ? 'group' : undefined}
+            aria-label={
+              snapshot.canApprove
+                ? 'انتخاب تأیید ابزار'
+                : snapshot.canRespondToDisclosure
+                  ? 'انتخاب اجازه دیدن صفحه'
+                  : undefined
+            }
+          >
             {snapshot.canFinish ? (
               <Button
                 size="icon-sm"
@@ -352,30 +389,42 @@ export function FlyoverApp(): React.JSX.Element {
             {snapshot.canApprove ? (
               <>
                 <Button
-                  size="sm"
-                  variant="ghost"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => window.flyoverApi.resolveApproval(true)}
+                >
+                  <Check data-icon="inline-start" />
+                  اجازه بده
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full"
                   onClick={() => window.flyoverApi.resolveApproval(false)}
                 >
                   <X data-icon="inline-start" />
-                  نه
-                </Button>
-                <Button size="sm" onClick={() => window.flyoverApi.resolveApproval(true)}>
-                  <Check data-icon="inline-start" />
-                  انجام بده
+                  رد کن
                 </Button>
               </>
             ) : null}
             {snapshot.canRespondToDisclosure ? (
               <>
                 <Button
-                  size="sm"
-                  variant="ghost"
+                  size="lg"
+                  className="w-full"
+                  onClick={() => window.flyoverApi.resolveDisclosure(true)}
+                >
+                  <Check data-icon="inline-start" />
+                  اجازه بده
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full"
                   onClick={() => window.flyoverApi.resolveDisclosure(false)}
                 >
-                  نه
-                </Button>
-                <Button size="sm" onClick={() => window.flyoverApi.resolveDisclosure(true)}>
-                  ادامه
+                  <X data-icon="inline-start" />
+                  رد کن
                 </Button>
               </>
             ) : null}

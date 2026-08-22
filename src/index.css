@@ -359,10 +359,115 @@
     font-size: 0.9375rem;
     line-height: 1.6;
     overflow-wrap: anywhere;
-    white-space: pre-wrap;
     cursor: text;
     user-select: text;
     -webkit-app-region: no-drag;
+  }
+
+  .flyover-plain-copy {
+    white-space: pre-wrap;
+  }
+
+  .flyover-markdown {
+    min-width: 0;
+  }
+
+  .flyover-markdown :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr) {
+    margin: 0;
+  }
+
+  .flyover-markdown > :not(:first-child) {
+    margin-top: 0.65rem;
+  }
+
+  .flyover-markdown :where(h1, h2, h3, h4, h5, h6) {
+    font-size: 1em;
+    font-weight: 750;
+    line-height: 1.5;
+  }
+
+  .flyover-markdown :where(ul, ol) {
+    padding-inline-start: 1.25rem;
+  }
+
+  .flyover-markdown li + li {
+    margin-top: 0.2rem;
+  }
+
+  .flyover-markdown blockquote {
+    border-inline-start: 2px solid color-mix(in srgb, var(--foreground) 28%, transparent);
+    padding-inline-start: 0.7rem;
+    color: var(--muted-foreground);
+  }
+
+  .flyover-markdown a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--foreground) 45%, transparent);
+    text-underline-offset: 0.16em;
+  }
+
+  .flyover-markdown :not(pre) > code {
+    direction: ltr;
+    unicode-bidi: isolate;
+    border-radius: 0.3rem;
+    padding: 0.08rem 0.28rem;
+    background: color-mix(in srgb, var(--foreground) 9%, transparent);
+    font-size: 0.84em;
+  }
+
+  .flyover-markdown pre {
+    direction: ltr;
+    overflow-x: auto;
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    border-radius: 0.65rem;
+    padding: 0.65rem 0.75rem;
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+    font-size: 0.78rem;
+    line-height: 1.55;
+    text-align: start;
+    white-space: pre;
+  }
+
+  .flyover-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    border-radius: 0.65rem;
+    scrollbar-width: thin;
+  }
+
+  .flyover-table-scroll table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+
+  .flyover-table-scroll :where(th, td) {
+    border-inline-end: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+    padding: 0.38rem 0.55rem;
+    text-align: start;
+    white-space: nowrap;
+  }
+
+  .flyover-table-scroll th {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+    font-weight: 700;
+  }
+
+  .flyover-table-scroll tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .flyover-table-scroll :where(th, td):last-child {
+    border-inline-end: 0;
+  }
+
+  .flyover-markdown input[type='checkbox'] {
+    margin-inline-end: 0.35rem;
+    accent-color: var(--foreground);
   }
 
   .flyover-copy::-webkit-scrollbar {
@@ -384,6 +489,14 @@
 
   .flyover-surface[data-layout='reading'] .flyover-copy {
     max-height: 26rem;
+  }
+
+  .flyover-surface[data-layout='wide'] .flyover-copy {
+    max-height: 21rem;
+  }
+
+  .flyover-surface[data-layout='wide-reading'] .flyover-copy {
+    max-height: 32rem;
   }
 
   .flyover-surface:has(.flyover-preview) .flyover-copy {
@@ -455,6 +568,14 @@
 
   .flyover-surface[data-layout='reading']:has(.flyover-compose-shell) .flyover-copy {
     max-height: 22rem;
+  }
+
+  .flyover-surface[data-layout='wide']:has(.flyover-compose-shell) .flyover-copy {
+    max-height: 17rem;
+  }
+
+  .flyover-surface[data-layout='wide-reading']:has(.flyover-compose-shell) .flyover-copy {
+    max-height: 28rem;
   }
 
   .flyover-status-dot[data-active='true'] {
