@@ -140,6 +140,42 @@ test('keeps a main-window dismissal hidden until a new flyover session starts', 
   assert.equal(service.getSnapshot().visible, true)
 })
 
+test('conceals and restores an ongoing task without clearing its state', () => {
+  const window = fakeWindow()
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(window)
+  service.show({
+    mode: 'assistant',
+    phase: 'tool',
+    title: 'میکی',
+    text: 'دارم فایل‌ها رو می‌گردم…',
+    interactive: true
+  })
+
+  service.conceal()
+  service.reveal({ phase: 'reply', text: 'نتیجه آماده است.' })
+  assert.deepEqual(
+    {
+      visible: service.getSnapshot().visible,
+      phase: service.getSnapshot().phase,
+      text: service.getSnapshot().text,
+      interactive: service.getSnapshot().interactive
+    },
+    {
+      visible: false,
+      phase: 'reply',
+      text: 'نتیجه آماده است.',
+      interactive: true
+    }
+  )
+
+  service.redisplay()
+  assert.equal(service.getSnapshot().visible, true)
+  assert.equal(service.getSnapshot().phase, 'reply')
+  assert.equal(window.hideCount, 1)
+  assert.equal(window.showCount, 2)
+})
+
 test('keeps the window shown across in-place updates and preserves a screen preview', () => {
   const window = fakeWindow()
   const service = new FlyoverService(() => undefined)

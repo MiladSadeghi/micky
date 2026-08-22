@@ -1229,6 +1229,10 @@ function handleMainWindowFocus(): void {
 }
 
 function showOngoingAssistantFlyover(): void {
+  if (assistantFlyoverActive) {
+    flyoverService?.redisplay()
+    return
+  }
   showAssistantFlyover(true)
   assistantFlyoverMirroring = true
   const conversationStatus = conversation?.getStatus() ?? INITIAL_CONVERSATION_STATUS
@@ -1241,6 +1245,7 @@ function showOngoingAssistantFlyover(): void {
 function handleAssistantShortcut(): void {
   const action = assistantShortcutAction({
     flyoverActive: assistantFlyoverActive,
+    flyoverVisible: flyoverService?.getSnapshot().visible ?? false,
     flyoverMirroring: assistantFlyoverMirroring,
     conversationMode: conversation?.getStatus().mode ?? 'idle',
     speechActive: speechService?.isSessionActive() ?? false,
@@ -1248,6 +1253,10 @@ function handleAssistantShortcut(): void {
   })
   if (action === 'hide-mirror') {
     hideMirroredAssistantFlyover()
+    return
+  }
+  if (action === 'hide-ongoing') {
+    flyoverService?.conceal()
     return
   }
   if (action === 'stop-session') {
@@ -1355,7 +1364,7 @@ function handleAgentStatus(status: AgentStatus): void {
   if (!assistantFlyoverActive) return
   if (!turn) return
   if (turn.phase === 'confirm') {
-    flyoverService?.show({
+    flyoverService?.reveal({
       mode: 'assistant',
       phase: 'confirm',
       title: 'تأیید لازم است',

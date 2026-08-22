@@ -21,6 +21,7 @@ test('reveals a main-window task instead of starting a new shortcut session', ()
   assert.equal(
     assistantShortcutAction({
       flyoverActive: false,
+      flyoverVisible: false,
       flyoverMirroring: false,
       conversationMode: 'agent',
       speechActive: false,
@@ -31,6 +32,7 @@ test('reveals a main-window task instead of starting a new shortcut session', ()
   assert.equal(
     assistantShortcutAction({
       flyoverActive: false,
+      flyoverVisible: false,
       flyoverMirroring: false,
       conversationMode: 'idle',
       speechActive: true,
@@ -44,6 +46,7 @@ test('hides a mirrored task without stopping its main-window session', () => {
   assert.equal(
     assistantShortcutAction({
       flyoverActive: true,
+      flyoverVisible: true,
       flyoverMirroring: true,
       conversationMode: 'agent',
       speechActive: false,
@@ -53,10 +56,55 @@ test('hides a mirrored task without stopping its main-window session', () => {
   )
 })
 
+test('conceals an active flyover task instead of stopping the agent', () => {
+  for (const conversationMode of ['agent', 'confirm', 'followup'] as const) {
+    assert.equal(
+      assistantShortcutAction({
+        flyoverActive: true,
+        flyoverVisible: true,
+        flyoverMirroring: false,
+        conversationMode,
+        speechActive: false,
+        dictationActive: false
+      }),
+      'hide-ongoing'
+    )
+  }
+})
+
+test('still stops a flyover that is only listening for a new request', () => {
+  assert.equal(
+    assistantShortcutAction({
+      flyoverActive: true,
+      flyoverVisible: true,
+      flyoverMirroring: false,
+      conversationMode: 'idle',
+      speechActive: true,
+      dictationActive: false
+    }),
+    'stop-session'
+  )
+})
+
+test('reveals a concealed flyover task on the next shortcut press', () => {
+  assert.equal(
+    assistantShortcutAction({
+      flyoverActive: true,
+      flyoverVisible: false,
+      flyoverMirroring: false,
+      conversationMode: 'agent',
+      speechActive: false,
+      dictationActive: false
+    }),
+    'reveal-ongoing'
+  )
+})
+
 test('starts a new assistant session when only dictation is active', () => {
   assert.equal(
     assistantShortcutAction({
       flyoverActive: false,
+      flyoverVisible: false,
       flyoverMirroring: false,
       conversationMode: 'idle',
       speechActive: true,

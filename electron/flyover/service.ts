@@ -57,6 +57,22 @@ export class FlyoverService {
     this.hide()
   }
 
+  conceal(): FlyoverSnapshot {
+    this.#dismissed = true
+    this.#snapshot = { ...this.#snapshot, visible: false }
+    this.#emit()
+    const window = this.#window
+    if (window && !window.isDestroyed()) window.hide()
+    return this.getSnapshot()
+  }
+
+  redisplay(): FlyoverSnapshot {
+    this.#dismissed = false
+    this.#snapshot = { ...this.#snapshot, visible: true }
+    this.#present()
+    return this.getSnapshot()
+  }
+
   hide(): void {
     this.resolveDisclosure(false)
     this.#snapshot = {

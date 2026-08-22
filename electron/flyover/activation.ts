@@ -2,7 +2,7 @@ import type { WakeWordActivation } from '@/lib/wake-word'
 import type { ConversationMode } from '@/lib/conversation'
 
 export type AssistantShortcutAction =
-  'start-session' | 'stop-session' | 'reveal-ongoing' | 'hide-mirror'
+  'start-session' | 'stop-session' | 'reveal-ongoing' | 'hide-ongoing' | 'hide-mirror'
 
 export type MainWindowFocusAction = 'none' | 'hide' | 'detach-assistant' | 'cancel-compose'
 
@@ -15,13 +15,19 @@ export function shouldShowWakeFlyover(
 
 export function assistantShortcutAction(input: {
   flyoverActive: boolean
+  flyoverVisible: boolean
   flyoverMirroring: boolean
   conversationMode: ConversationMode
   speechActive: boolean
   dictationActive: boolean
 }): AssistantShortcutAction {
   if (input.flyoverActive) {
-    return input.flyoverMirroring ? 'hide-mirror' : 'stop-session'
+    if (!input.flyoverVisible) return 'reveal-ongoing'
+    if (input.flyoverMirroring) return 'hide-mirror'
+    if (input.conversationMode !== 'idle') {
+      return 'hide-ongoing'
+    }
+    return 'stop-session'
   }
   if (!input.dictationActive && (input.conversationMode !== 'idle' || input.speechActive)) {
     return 'reveal-ongoing'
