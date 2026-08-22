@@ -6,7 +6,7 @@ const EMPHASIS_MARKDOWN = /(?:^|[\s([{])(?:\*[^*\n]+\*|_[^_\n]+_)(?=$|[\s)\]},.!
 const TABLE_MARKDOWN = /(?:^|\n)\s*\|?.+\|.+\n\s*\|?\s*:?-{3,}/m
 const AUTOLINK_MARKDOWN = /https?:\/\/\S+/
 
-export function hasFlyoverMarkdown(text: string): boolean {
+export function hasRichMarkdown(text: string): boolean {
   return (
     BLOCK_MARKDOWN.test(text) ||
     INLINE_MARKDOWN.test(text) ||

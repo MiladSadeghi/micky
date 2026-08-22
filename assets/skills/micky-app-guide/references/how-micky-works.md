@@ -1,0 +1,45 @@
+# How Micky works
+
+## Product shape
+
+Micky is a small Persian-first desktop companion, not a chat workspace. The main window centers on one orb and a spoken conversation. Past conversations are available from the compact archive in the footer. The shortcut flyover can accept voice or typed input without turning the main app into a text-first chat.
+
+## The three independent modules
+
+1. `شنیدن`: the bundled local ONNX wake-word detector listens for `هی میکی`; a downloaded local Shenava model converts Persian speech to text. Raw speech is not sent to a cloud speech-recognition service.
+2. `مغز (مدل AI)`: the selected language-model endpoint receives the transcript, keeps conversation context, chooses enabled tools, and creates a short answer. It can be OpenRouter, a custom OpenAI-compatible endpoint, Ollama, or LM Studio.
+3. `حرف‌زدن`: optional Gemini or ElevenLabs text-to-speech reads the answer. If this is off, Micky still shows the reply as text.
+
+The choices are independent. For example, listening can stay local while the brain uses OpenRouter and spoken replies remain off. A fully local core setup uses Shenava plus Ollama or LM Studio and keeps cloud TTS off. Web search and any explicitly requested screen inspection can still send data online when enabled.
+
+## Starting and continuing a conversation
+
+- Say `هی میکی`, tap the orb, or press the `دستیار میکی` global shortcut.
+- After a completed answer, Micky listens for a follow-up for about 12 seconds. The same conversation and model context continue.
+- Use the `گفتگوی تازه` shortcut when old context is no longer useful.
+- The current chat survives app reloads and normally rolls over after 30 minutes of inactivity. A chat from the archive can be resumed with recent turns restored to context.
+- Speech recognition can omit punctuation, split words, or hear English words phonetically. The user should simply repeat or correct the request by voice; do not tell them to type a corrected transcript.
+
+## Dictation versus assistant
+
+The `دیکته در برنامه فعال` shortcut transcribes speech into the currently focused application. Optional AI cleanup can improve the text, and automatic paste can insert it. This is separate from asking the assistant to reason or use tools. These switches live in `تنظیمات → میانبرها`.
+
+## Agent modules
+
+- `آشنایی`: Micky's personality, user profile, and durable memory. These are local Markdown layers and are included selectively in its context.
+- `مهارت‌ها`: procedural guides. Micky sees only enabled skill names and descriptions, then loads a matching guide on demand.
+- `ابزارها و دسترسی‌ها`: guarded file actions, app opening, commands, and direct screen inspection. Sensitive actions require confirmation or remain blocked.
+- `جستجوی وب`: optional Exa, Firecrawl, or local Google search. Reading a known public page is separate from searching.
+- `گفتگوها`: local SQLite conversation storage and full-text search. It can be disabled or cleared.
+
+## Privacy and data destinations
+
+- Wake-word detection and Shenava speech recognition run locally.
+- API keys are stored in the operating-system keychain, not ordinary settings files.
+- Agent requests go to the selected language-model endpoint. Ollama and LM Studio can remain local; OpenRouter and remote custom endpoints are cloud services.
+- Spoken reply text goes to Gemini or ElevenLabs only when that TTS service is enabled.
+- Screen content is captured only after a direct request and the disclosure flow, then sent to the chosen vision-capable model. Micky does not retain the capture.
+- Conversation history, personality, profile, and memory are stored locally.
+- There is no analytics or telemetry in Micky.
+
+Do not describe Micky as fully offline merely because speech recognition is local. A setup is cloud-free only when its language model is local, cloud TTS is off, web search is not used, and no screen request is sent to a cloud vision model.

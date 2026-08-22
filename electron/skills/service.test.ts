@@ -3,8 +3,40 @@ import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { BUNDLED_SKILL_SOURCE } from '@/lib/skills'
 import { SettingsStore } from '../settings/store'
 import { parseSkillFrontmatter, SkillService } from './service'
+
+test('discovers app-bundled skills and enables them by default', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'micky-skills-'))
+  const bundledRoot = join(home, 'app', 'assets', 'skills')
+  const skillDirectory = join(bundledRoot, 'micky-app-guide')
+  const installedSkillDirectory = join(home, '.agents', 'skills', 'alphabetical-first')
+  await mkdir(skillDirectory, { recursive: true })
+  await mkdir(installedSkillDirectory, { recursive: true })
+  await writeFile(
+    join(skillDirectory, 'SKILL.md'),
+    '---\nname: micky-app-guide\ndescription: Explains how to configure and use Micky.\n---\n\nUse the guide.\n',
+    'utf8'
+  )
+  await writeFile(
+    join(installedSkillDirectory, 'SKILL.md'),
+    '---\nname: alphabetical-first\ndescription: An installed skill that normally sorts first.\n---\n',
+    'utf8'
+  )
+
+  const settings = new SettingsStore(join(home, 'app-data'))
+  await settings.load()
+  const service = new SkillService(settings, { home, bundledRoot })
+  const snapshot = await service.refresh()
+
+  assert.equal(snapshot.enabled, true)
+  assert.equal(snapshot.skills.length, 2)
+  assert.equal(snapshot.skills[0]?.name, 'micky-app-guide')
+  assert.equal(snapshot.skills[0]?.source, BUNDLED_SKILL_SOURCE)
+  assert.equal(snapshot.skills[0]?.enabled, true)
+  assert.match((await service.load(snapshot.skills[0]!.id)).instructions, /Use the guide/)
+})
 
 test('discovers valid skills, deduplicates symlinks, and loads resources on demand', async () => {
   const home = await mkdtemp(join(tmpdir(), 'micky-skills-'))

@@ -31,7 +31,7 @@ import type { TtsSnapshot } from '@/lib/tts'
 import type { ScreenAccessStatus, SettingsSnapshot } from '@/lib/settings'
 import type { LlmSnapshot } from '@/lib/llm'
 import type { ChatsSnapshot } from '@/lib/chats'
-import type { SkillsSnapshot } from '@/lib/skills'
+import { MICKY_APP_GUIDE_SKILL_NAME, type SkillsSnapshot } from '@/lib/skills'
 import type { AppUpdateSnapshot } from '@/lib/app-update'
 import { Button } from '@/components/ui/button'
 import {
@@ -374,8 +374,8 @@ function SkillsSettings({ snapshot }: { snapshot: SkillsSnapshot | null }): Reac
         <CardHeader>
           <CardTitle id="skills-enabled-label">استفاده از مهارت‌ها</CardTitle>
           <CardDescription>
-            میکی مهارت‌های نصب‌شده با skills.sh را پیدا می‌کند و راهنمای کامل هرکدام را فقط موقع
-            نیاز می‌خواند
+            میکی مهارت‌های همراه برنامه و نصب‌شده با skills.sh را پیدا می‌کند و راهنمای کامل هرکدام
+            را فقط موقع نیاز می‌خواند
           </CardDescription>
           <CardAction>
             <Switch
@@ -393,7 +393,7 @@ function SkillsSettings({ snapshot }: { snapshot: SkillsSnapshot | null }): Reac
           <CardTitle>مهارت‌های پیدا‌شده</CardTitle>
           <CardDescription>
             {skills.length > 0
-              ? `${skills.length.toLocaleString('fa-IR')} مهارت نصب‌شده روی این دستگاه`
+              ? `${skills.length.toLocaleString('fa-IR')} مهارت در دسترس`
               : 'پوشه‌های استاندارد skills.sh بررسی می‌شوند'}
           </CardDescription>
           <CardAction>
@@ -411,21 +411,46 @@ function SkillsSettings({ snapshot }: { snapshot: SkillsSnapshot | null }): Reac
           {skills.length > 0 ? (
             <div className="flex flex-col">
               {skills.map((skill, index) => (
-                <div key={skill.id}>
+                <div
+                  key={skill.id}
+                  className={
+                    skill.name === MICKY_APP_GUIDE_SKILL_NAME
+                      ? 'rounded-xl border border-primary/25 bg-primary/5 px-3'
+                      : undefined
+                  }
+                >
                   {index > 0 ? <Separator /> : null}
-                  <Field orientation="horizontal" className="py-3 first:pt-0 last:pb-0">
+                  <Field
+                    orientation="horizontal"
+                    className={
+                      skill.name === MICKY_APP_GUIDE_SKILL_NAME
+                        ? 'py-3'
+                        : 'py-3 first:pt-0 last:pb-0'
+                    }
+                  >
                     <FieldContent className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <FieldLabel htmlFor={`skill-${skill.id}`} dir="ltr">
                           {skill.name}
                         </FieldLabel>
-                        <Badge variant="secondary" className="text-[0.58rem]">
+                        <Badge
+                          variant={
+                            skill.name === MICKY_APP_GUIDE_SKILL_NAME ? 'default' : 'secondary'
+                          }
+                          className="text-[0.58rem]"
+                        >
                           {skill.source}
                         </Badge>
                       </div>
-                      <FieldDescription className="line-clamp-2 text-[0.68rem] leading-5">
-                        {skill.description}
-                      </FieldDescription>
+                      {skill.name === MICKY_APP_GUIDE_SKILL_NAME ? (
+                        <FieldDescription className="text-[0.68rem] leading-5">
+                          از خود میکی دربارهٔ تنظیمات، مدل‌ها، کلیدهای API و روش کارش بپرس.
+                        </FieldDescription>
+                      ) : (
+                        <FieldDescription className="line-clamp-2 text-[0.68rem] leading-5">
+                          {skill.description}
+                        </FieldDescription>
+                      )}
                     </FieldContent>
                     <Switch
                       id={`skill-${skill.id}`}

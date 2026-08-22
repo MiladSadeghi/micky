@@ -1574,7 +1574,9 @@ app.whenReady().then(async () => {
   await secretStore.load()
   soulStore = new SoulStore(app.getPath('userData'))
   await soulStore.initialize()
-  skillService = new SkillService(settingsStore)
+  skillService = new SkillService(settingsStore, {
+    bundledRoot: join(app.getAppPath(), 'assets', 'skills')
+  })
   await skillService.refresh()
   chatStore = new ChatStore(app.getPath('userData'), { onChange: emitChatsSnapshot })
   llmService = new LlmService({

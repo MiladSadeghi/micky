@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto'
 import { readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import type { SkillSummary, SkillsSnapshot } from '@/lib/skills'
+import {
+  BUNDLED_SKILL_SOURCE,
+  MICKY_APP_GUIDE_SKILL_NAME,
+  type SkillSummary,
+  type SkillsSnapshot
+} from '@/lib/skills'
 import type { SettingsStore } from '../settings/store'
 
 const SKILL_FILE_NAME = 'SKILL.md'
@@ -114,12 +119,13 @@ export class SkillService {
 
   constructor(
     private readonly settings: SettingsStore,
-    options: { home?: string; roots?: SkillRoot[] } = {}
+    options: { home?: string; roots?: SkillRoot[]; bundledRoot?: string } = {}
   ) {
     const home = options.home ?? homedir()
-    this.#roots =
-      options.roots ??
-      GLOBAL_SKILL_DIRECTORIES.map(([path, source]) => ({ path: join(home, path), source }))
+    this.#roots = options.roots ?? [
+      ...(options.bundledRoot ? [{ path: options.bundledRoot, source: BUNDLED_SKILL_SOURCE }] : []),
+      ...GLOBAL_SKILL_DIRECTORIES.map(([path, source]) => ({ path: join(home, path), source }))
+    ]
   }
 
   async refresh(): Promise<SkillsSnapshot> {
@@ -273,7 +279,11 @@ async function discoverSkills(roots: SkillRoot[]): Promise<SkillRecord[]> {
   }
 
   for (const root of roots) await walk(root.path, root.source, 0)
-  return records.sort((a, b) => a.name.localeCompare(b.name, 'en'))
+  return records.sort((a, b) => {
+    const featuredOrder =
+      Number(b.name === MICKY_APP_GUIDE_SKILL_NAME) - Number(a.name === MICKY_APP_GUIDE_SKILL_NAME)
+    return featuredOrder || a.name.localeCompare(b.name, 'en')
+  })
 }
 
 export function parseSkillFrontmatter(

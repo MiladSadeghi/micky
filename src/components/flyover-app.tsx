@@ -20,15 +20,18 @@ import { cn } from '@/lib/utils'
 import { applyAppearance } from '@/lib/appearance'
 import { DEFAULT_FONT_FAMILY, DEFAULT_THEME, type AppearanceSnapshot } from '@/lib/settings'
 import { useEarcons } from '@/hooks/use-earcons'
+import { useThrottledValue } from '@/hooks/use-throttled-value'
 import { useTypewriter } from '@/hooks/use-typewriter'
 import { getFlyoverLayout } from '@/lib/flyover-layout'
-import { hasFlyoverMarkdown } from '@/lib/flyover-markdown'
+import { hasRichMarkdown } from '@/lib/flyover-markdown'
 import { detectTextDirection } from '@/lib/text-direction'
 import { playConfirmChime } from '@/lib/wake-chime'
 
 const FlyoverMarkdown = lazy(() =>
   import('@/components/flyover-markdown').then((module) => ({ default: module.FlyoverMarkdown }))
 )
+
+const STREAMING_MARKDOWN_INTERVAL_MS = 80
 
 const FLYOVER_ORB_STATE: Record<FlyoverSnapshot['phase'], OrbState> = {
   hidden: 'breathing',
@@ -60,6 +63,12 @@ function FlyoverCopy({ text, animate }: { text: string; animate: boolean }): Rea
   const scrollerRef = useRef<HTMLDivElement>(null)
   const shouldFollowRef = useRef(true)
   const shown = useTypewriter(text, animate)
+  const renderMarkdown = hasRichMarkdown(text)
+  const throttledMarkdown = useThrottledValue(
+    renderMarkdown ? shown : '',
+    STREAMING_MARKDOWN_INTERVAL_MS
+  )
+  const markdownText = throttledMarkdown || shown
   const followLatestCopy = useCallback(() => {
     const el = scrollerRef.current
     if (!el) return
@@ -71,7 +80,6 @@ function FlyoverCopy({ text, animate }: { text: string; animate: boolean }): Rea
       {shown || '…'}
     </p>
   )
-  const renderMarkdown = shown === text && hasFlyoverMarkdown(text)
 
   useEffect(() => {
     followLatestCopy()
@@ -93,7 +101,7 @@ function FlyoverCopy({ text, animate }: { text: string; animate: boolean }): Rea
     >
       {renderMarkdown ? (
         <Suspense fallback={plainCopy}>
-          <FlyoverMarkdown text={text} onRendered={followLatestCopy} />
+          <FlyoverMarkdown text={markdownText} onRendered={followLatestCopy} />
         </Suspense>
       ) : (
         plainCopy

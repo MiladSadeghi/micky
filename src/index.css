@@ -368,46 +368,46 @@
     white-space: pre-wrap;
   }
 
-  .flyover-markdown {
+  .markdown-content {
     min-width: 0;
   }
 
-  .flyover-markdown :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr) {
+  .markdown-content :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, hr) {
     margin: 0;
   }
 
-  .flyover-markdown > :not(:first-child) {
+  .markdown-content > :not(:first-child) {
     margin-top: 0.65rem;
   }
 
-  .flyover-markdown :where(h1, h2, h3, h4, h5, h6) {
+  .markdown-content :where(h1, h2, h3, h4, h5, h6) {
     font-size: 1em;
     font-weight: 750;
     line-height: 1.5;
   }
 
-  .flyover-markdown :where(ul, ol) {
+  .markdown-content :where(ul, ol) {
     padding-inline-start: 1.25rem;
   }
 
-  .flyover-markdown li + li {
+  .markdown-content li + li {
     margin-top: 0.2rem;
   }
 
-  .flyover-markdown blockquote {
+  .markdown-content blockquote {
     border-inline-start: 2px solid color-mix(in srgb, var(--foreground) 28%, transparent);
     padding-inline-start: 0.7rem;
     color: var(--muted-foreground);
   }
 
-  .flyover-markdown a {
+  .markdown-content a {
     color: inherit;
     text-decoration: underline;
     text-decoration-color: color-mix(in srgb, var(--foreground) 45%, transparent);
     text-underline-offset: 0.16em;
   }
 
-  .flyover-markdown :not(pre) > code {
+  .markdown-content :not(pre) > code {
     direction: ltr;
     unicode-bidi: isolate;
     border-radius: 0.3rem;
@@ -416,7 +416,7 @@
     font-size: 0.84em;
   }
 
-  .flyover-markdown pre {
+  .markdown-content pre {
     direction: ltr;
     overflow-x: auto;
     border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
@@ -429,7 +429,7 @@
     white-space: pre;
   }
 
-  .flyover-table-scroll {
+  .markdown-table-scroll {
     max-width: 100%;
     overflow-x: auto;
     border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
@@ -437,14 +437,14 @@
     scrollbar-width: thin;
   }
 
-  .flyover-table-scroll table {
+  .markdown-table-scroll table {
     width: max-content;
     min-width: 100%;
     border-collapse: collapse;
     font-size: 0.82rem;
   }
 
-  .flyover-table-scroll :where(th, td) {
+  .markdown-table-scroll :where(th, td) {
     border-inline-end: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
     padding: 0.38rem 0.55rem;
@@ -452,22 +452,40 @@
     white-space: nowrap;
   }
 
-  .flyover-table-scroll th {
+  .markdown-table-scroll th {
     background: color-mix(in srgb, var(--foreground) 6%, transparent);
     font-weight: 700;
   }
 
-  .flyover-table-scroll tr:last-child td {
+  .markdown-table-scroll tr:last-child td {
     border-bottom: 0;
   }
 
-  .flyover-table-scroll :where(th, td):last-child {
+  .markdown-table-scroll :where(th, td):last-child {
     border-inline-end: 0;
   }
 
-  .flyover-markdown input[type='checkbox'] {
+  .markdown-content input[type='checkbox'] {
     margin-inline-end: 0.35rem;
     accent-color: var(--foreground);
+  }
+
+  .chat-message {
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 6rem;
+  }
+
+  .chat-message-plain,
+  .chat-markdown {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: color-mix(in srgb, var(--foreground) 88%, var(--grey-400));
+    font-size: 0.875rem;
+    line-height: 1.75rem;
+  }
+
+  .chat-message-plain {
+    white-space: pre-wrap;
   }
 
   .flyover-copy::-webkit-scrollbar {

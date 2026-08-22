@@ -1,5 +1,5 @@
 import { ArrowRight, History, MessageSquareText, Mic, Search, Trash2 } from 'lucide-react'
-import { useDeferredValue, useEffect, useState } from 'react'
+import { lazy, memo, Suspense, useDeferredValue, useEffect, useState } from 'react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +17,12 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import type { ChatDetail, ChatSearchHit, ChatSummary, ChatsSnapshot } from '@/lib/chats'
+import { hasRichMarkdown } from '@/lib/flyover-markdown'
+import { detectTextDirection } from '@/lib/text-direction'
+
+const ChatMarkdown = lazy(() =>
+  import('@/components/flyover-markdown').then((module) => ({ default: module.ChatMarkdown }))
+)
 
 const PERSIAN_DATE = new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
   day: 'numeric',
@@ -215,7 +221,7 @@ export function ChatDetailView({
       <ScrollArea className="min-h-0 flex-1 border-y border-border/40">
         <div className="flex flex-col gap-5 px-5 py-5 text-start">
           {(chat?.messages ?? []).map((message) => (
-            <article key={message.id} className="flex flex-col gap-1.5">
+            <article key={message.id} className="chat-message flex flex-col gap-1.5">
               <div className="flex items-center gap-2 text-[0.65rem] text-muted-foreground">
                 <span>{message.role === 'user' ? 'تو' : 'میکی'}</span>
                 <span aria-hidden="true">·</span>
@@ -223,7 +229,7 @@ export function ChatDetailView({
                   {PERSIAN_TIME.format(message.createdAt)}
                 </time>
               </div>
-              <p className="text-sm leading-7 text-foreground/88">{message.content}</p>
+              <ChatMessageContent content={message.content} />
               {message.state !== 'completed' ? (
                 <span className="text-[0.62rem] text-muted-foreground">
                   {message.state === 'interrupted' ? 'پاسخ ناتمام' : 'ناموفق'}
@@ -243,6 +249,24 @@ export function ChatDetailView({
     </main>
   )
 }
+
+const ChatMessageContent = memo(function ChatMessageContent({
+  content
+}: {
+  content: string
+}): React.JSX.Element {
+  const plain = (
+    <p className="chat-message-plain" dir={detectTextDirection(content)}>
+      {content}
+    </p>
+  )
+  if (!hasRichMarkdown(content)) return plain
+  return (
+    <Suspense fallback={plain}>
+      <ChatMarkdown text={content} />
+    </Suspense>
+  )
+})
 
 function CompanionTitlebar(): React.JSX.Element {
   return <header className="app-titlebar shrink-0" aria-hidden="true" />

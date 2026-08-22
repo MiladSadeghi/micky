@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { FlyoverMarkdown } from '@/components/flyover-markdown'
+import { ChatMarkdown, FlyoverMarkdown } from '@/components/flyover-markdown'
 
 test('renders flyover emphasis and GFM tables as semantic markup', () => {
   const html = renderToStaticMarkup(
@@ -13,7 +13,7 @@ test('renders flyover emphasis and GFM tables as semantic markup', () => {
   )
 
   assert.match(html, /<strong>نتیجه<\/strong>/)
-  assert.match(html, /class="flyover-table-scroll"/)
+  assert.match(html, /class="markdown-table-scroll"/)
   assert.match(html, /<table>/)
 })
 
@@ -26,4 +26,16 @@ test('does not render raw HTML or Markdown images in the flyover', () => {
   )
 
   assert.doesNotMatch(html, /<script|<img/i)
+})
+
+test('renders the same safe Markdown inside chat history', () => {
+  const html = renderToStaticMarkup(
+    createElement(ChatMarkdown, {
+      text: '## نتیجه\n\n- **اول**\n- دوم'
+    })
+  )
+
+  assert.match(html, /class="markdown-content chat-markdown"/)
+  assert.match(html, /<h2>نتیجه<\/h2>/)
+  assert.match(html, /<strong>اول<\/strong>/)
 })
