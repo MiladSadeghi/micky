@@ -12,7 +12,7 @@ import {
   globalShortcut
 } from 'electron'
 import { existsSync } from 'node:fs'
-import { mkdir, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { agentStatusLabel, INITIAL_AGENT_STATUS, type AgentStatus } from '@/lib/agent'
@@ -23,7 +23,12 @@ import {
   type ConversationStatus
 } from '@/lib/conversation'
 import { AUDIO_CHUNK_CHANNEL } from '@/lib/asr'
-import { OPENROUTER_KEYS_URL, isLlmProviderId, isOpenAiCompatibleProviderId } from '@/lib/llm'
+import {
+  OPENROUTER_KEYS_URL,
+  isLlmProviderId,
+  isLlmReasoningEffort,
+  isOpenAiCompatibleProviderId
+} from '@/lib/llm'
 import {
   APPEARANCE_SNAPSHOT_CHANNEL,
   DEFAULT_FONT_FAMILY,
@@ -56,12 +61,13 @@ import { SecretStore } from './llm/secrets'
 import { ModelRegistry } from './models/registry'
 import { SettingsStore } from './settings/store'
 import { SpeechService } from './speech/service'
+import { LocalShenavaProvider } from './speech/provider'
 import { SoulStore } from './soul/store'
 import { WakeWordService } from './wake-word/service'
 import { TtsService } from './tts/service'
 import { DictationController } from './dictation/controller'
 import { FlyoverService } from './flyover/service'
-import { shouldShowWakeFlyover } from './flyover/activation'
+import { assistantShortcutAction, shouldShowWakeFlyover } from './flyover/activation'
 import {
   canAcceptFlyoverCompose,
   clampFlyoverDraft,
@@ -75,6 +81,15 @@ import { VisionService } from './vision/service'
 import { SkillService } from './skills/service'
 import { SKILLS_SNAPSHOT_CHANNEL, type SkillsSnapshot } from '@/lib/skills'
 import { EARCON_CHANNEL, type EarconKind } from '@/lib/earcon'
+import {
+  EXA_KEYS_URL,
+  FIRECRAWL_KEYS_URL,
+  isWebSearchApiProviderId,
+  isWebSearchProviderId
+} from '@/lib/web-search'
+import { WebSearchService } from './web-search/service'
+import { extractVersionNotes } from '@/lib/app-update'
+import { AppUpdateService } from './update/service'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL
@@ -105,7 +120,10 @@ let shortcutService: ShortcutService | null = null
 let dictationController: DictationController | null = null
 let visionService: VisionService | null = null
 let skillService: SkillService | null = null
+let webSearchService: WebSearchService | null = null
+let appUpdateService: AppUpdateService | null = null
 let assistantFlyoverActive = false
+let assistantFlyoverMirroring = false
 let assistantShortcutSilent = false
 let assistantFlyoverComposing = false
 let assistantFlyoverTyped = false
@@ -226,15 +244,18 @@ async function emitSkillsSnapshot(snapshot?: SkillsSnapshot): Promise<SkillsSnap
 }
 
 async function setWakeWordEnabled(enabled: boolean) {
-  await settingsStore?.update({ wakeWordEnabled: enabled })
   const status = wakeWordService?.setEnabled(enabled)
+  await settingsStore?.update({ wakeWordEnabled: enabled })
   emitSettingsSnapshot()
   return status
 }
 
 function toggleWakeWord(): void {
-  const enabled = settingsStore?.get().wakeWordEnabled !== false
-  void setWakeWordEnabled(!enabled)
+  const enabled =
+    wakeWordService?.getStatus().enabled ?? settingsStore?.get().wakeWordEnabled !== false
+  void setWakeWordEnabled(!enabled).catch((error) => {
+    console.error('Failed to persist wake-word setting:', error)
+  })
 }
 
 async function setLaunchAtLogin(enabled: boolean): Promise<void> {
@@ -330,6 +351,27 @@ function registerIpc(): void {
       throw new Error('Invalid window mode.')
     }
     setMainWindowMode(mode)
+  })
+
+  ipcMain.handle('app-update:get-snapshot', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted update request.')
+    return appUpdateService?.getSnapshot()
+  })
+  ipcMain.handle('app-update:check', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted update request.')
+    return appUpdateService?.check()
+  })
+  ipcMain.handle('app-update:open-download', async (event) => {
+    if (!isTrustedSender(event.sender) || !appUpdateService) {
+      throw new Error('Untrusted update download request.')
+    }
+    await appUpdateService.openDownload()
+  })
+  ipcMain.handle('app-update:open-releases', async (event) => {
+    if (!isTrustedSender(event.sender) || !appUpdateService) {
+      throw new Error('Untrusted releases request.')
+    }
+    await appUpdateService.openReleases()
   })
 
   ipcMain.handle('wake-word:get-status', (event) => {
@@ -560,6 +602,21 @@ function registerIpc(): void {
     emitSettingsSnapshot()
     return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
   })
+  ipcMain.handle('settings:set-audio-device', async (event, kind: unknown, deviceId: unknown) => {
+    if (
+      !isTrustedSender(event.sender) ||
+      (kind !== 'input' && kind !== 'output') ||
+      typeof deviceId !== 'string'
+    ) {
+      throw new Error('Invalid audio device setting.')
+    }
+    const normalizedId = deviceId.trim().slice(0, 512) || 'default'
+    await settingsStore?.update(
+      kind === 'input' ? { inputDeviceId: normalizedId } : { outputDeviceId: normalizedId }
+    )
+    emitSettingsSnapshot()
+    return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
+  })
   ipcMain.handle('settings:set-system-tools', async (event, enabled: unknown) => {
     if (!isTrustedSender(event.sender) || typeof enabled !== 'boolean') {
       throw new Error('Invalid system tools setting.')
@@ -622,6 +679,46 @@ function registerIpc(): void {
     return settingsStore ? toSettingsSnapshot(settingsStore.get(), shortcutError) : null
   })
 
+  ipcMain.handle('web-search:get-snapshot', (event) => {
+    if (!isTrustedSender(event.sender)) throw new Error('Untrusted web search request.')
+    return webSearchService?.getSnapshot() ?? null
+  })
+  ipcMain.handle(
+    'web-search:set-provider-enabled',
+    async (event, providerId: unknown, enabled: unknown) => {
+      if (
+        !isTrustedSender(event.sender) ||
+        !isWebSearchProviderId(providerId) ||
+        typeof enabled !== 'boolean'
+      ) {
+        throw new Error('Invalid web search provider setting.')
+      }
+      return webSearchService?.setProviderEnabled(providerId, enabled)
+    }
+  )
+  ipcMain.handle('web-search:set-api-key', async (event, providerId: unknown, apiKey: unknown) => {
+    if (
+      !isTrustedSender(event.sender) ||
+      !isWebSearchApiProviderId(providerId) ||
+      typeof apiKey !== 'string'
+    ) {
+      throw new Error('Invalid web search API key.')
+    }
+    return webSearchService?.setApiKey(providerId, apiKey.slice(0, 512))
+  })
+  ipcMain.handle('web-search:clear-api-key', async (event, providerId: unknown) => {
+    if (!isTrustedSender(event.sender) || !isWebSearchApiProviderId(providerId)) {
+      throw new Error('Untrusted web search API key request.')
+    }
+    return webSearchService?.clearApiKey(providerId)
+  })
+  ipcMain.handle('web-search:open-keys', async (event, providerId: unknown) => {
+    if (!isTrustedSender(event.sender) || !isWebSearchApiProviderId(providerId)) {
+      throw new Error('Invalid web search keys request.')
+    }
+    await shell.openExternal(providerId === 'exa' ? EXA_KEYS_URL : FIRECRAWL_KEYS_URL)
+  })
+
   ipcMain.handle('skills:get-snapshot', async (event) => {
     if (!isTrustedSender(event.sender)) throw new Error('Untrusted skills request.')
     return skillService?.refresh() ?? null
@@ -675,6 +772,18 @@ function registerIpc(): void {
       throw new Error('Invalid model selection.')
     }
     return llmService?.setModel(modelId)
+  })
+  ipcMain.handle('llm:set-temperature', async (event, temperature: unknown) => {
+    if (!isTrustedSender(event.sender) || typeof temperature !== 'number') {
+      throw new Error('Invalid LLM temperature.')
+    }
+    return llmService?.setTemperature(temperature)
+  })
+  ipcMain.handle('llm:set-reasoning-effort', async (event, effort: unknown) => {
+    if (!isTrustedSender(event.sender) || !isLlmReasoningEffort(effort)) {
+      throw new Error('Invalid LLM reasoning effort.')
+    }
+    return llmService?.setReasoningEffort(effort)
   })
   ipcMain.handle('llm:add-custom-model', async (event, modelId: unknown) => {
     if (!isTrustedSender(event.sender) || typeof modelId !== 'string') {
@@ -753,6 +862,10 @@ function registerIpc(): void {
   })
   ipcMain.on('flyover:cancel', (event) => {
     if (!isTrustedFlyoverSender(event.sender)) return
+    if (assistantFlyoverMirroring) {
+      hideMirroredAssistantFlyover()
+      return
+    }
     if (assistantFlyoverActive) {
       stopAssistantFlyoverSession()
       return
@@ -983,6 +1096,7 @@ function createTray(): void {
 
 function showAssistantFlyover(silent: boolean): void {
   assistantFlyoverActive = true
+  assistantFlyoverMirroring = false
   assistantShortcutSilent = silent
   assistantFlyoverComposing = false
   assistantFlyoverTyped = false
@@ -1021,6 +1135,7 @@ function noteSpokenActivity(): void {
 
 function showMissingAsrModelFlyover(): void {
   assistantFlyoverActive = false
+  assistantFlyoverMirroring = false
   assistantShortcutSilent = false
   assistantFlyoverComposing = false
   assistantFlyoverTyped = false
@@ -1039,6 +1154,7 @@ function showMissingAsrModelFlyover(): void {
 function stopAssistantFlyoverSession(): void {
   if (!assistantFlyoverActive) return
   assistantFlyoverActive = false
+  assistantFlyoverMirroring = false
   assistantShortcutSilent = false
   assistantFlyoverComposing = false
   assistantFlyoverTyped = false
@@ -1051,9 +1167,45 @@ function stopAssistantFlyoverSession(): void {
   wakeWordService?.endExternalSession()
 }
 
+function hideMirroredAssistantFlyover(): void {
+  if (!assistantFlyoverActive || !assistantFlyoverMirroring) return
+  assistantFlyoverActive = false
+  assistantFlyoverMirroring = false
+  assistantShortcutSilent = false
+  assistantFlyoverComposing = false
+  assistantFlyoverTyped = false
+  clearFlyoverIdleDismiss()
+  flyoverService?.hide()
+}
+
+function showOngoingAssistantFlyover(): void {
+  showAssistantFlyover(false)
+  assistantFlyoverMirroring = true
+  const conversationStatus = conversation?.getStatus() ?? INITIAL_CONVERSATION_STATUS
+  if (conversationStatus.mode !== 'idle') {
+    handleAgentStatus(agentService?.getStatus() ?? INITIAL_AGENT_STATUS)
+    handleConversationStatus(conversationStatus)
+  }
+}
+
 function handleAssistantShortcut(): void {
-  if (assistantFlyoverActive) {
+  const action = assistantShortcutAction({
+    flyoverActive: assistantFlyoverActive,
+    flyoverMirroring: assistantFlyoverMirroring,
+    conversationMode: conversation?.getStatus().mode ?? 'idle',
+    speechActive: speechService?.isSessionActive() ?? false,
+    dictationActive: dictationController?.isActive() ?? false
+  })
+  if (action === 'hide-mirror') {
+    hideMirroredAssistantFlyover()
+    return
+  }
+  if (action === 'stop-session') {
     stopAssistantFlyoverSession()
+    return
+  }
+  if (action === 'reveal-ongoing') {
+    showOngoingAssistantFlyover()
     return
   }
   dictationController?.cancel()
@@ -1216,6 +1368,7 @@ function handleConversationStatus(status: ConversationStatus): void {
   }
   if (status.mode === 'idle' && !speechService?.isSessionActive() && !assistantFlyoverComposing) {
     assistantFlyoverActive = false
+    assistantFlyoverMirroring = false
     assistantShortcutSilent = false
     assistantFlyoverComposing = false
     assistantFlyoverTyped = false
@@ -1240,9 +1393,13 @@ function startRuntime(): void {
     () => speechService
   )
   speechService = new SpeechService({
-    scriptPath: resolveUnpackedWorkerPath('asr-process.cjs'),
     models: modelRegistry!,
     settings: settingsStore!,
+    createProvider: (handlers) =>
+      new LocalShenavaProvider({
+        scriptPath: resolveUnpackedWorkerPath('asr-process.cjs'),
+        handlers
+      }),
     getWindow: () => mainWindow,
     getPreroll: () => audioRouter?.takePreroll() ?? new ArrayBuffer(0),
     onSessionEnd: (mode: SpeechSessionMode) => {
@@ -1361,12 +1518,18 @@ app.whenReady().then(async () => {
     llm: llmService,
     flyover: flyoverService
   })
+  webSearchService = new WebSearchService({
+    settings: settingsStore,
+    secrets: secretStore,
+    getWindow: () => mainWindow
+  })
   agentService = new AgentService({
     settings: settingsStore,
     llm: llmService,
     soul: soulStore,
     chats: chatStore,
     skills: skillService,
+    webSearch: webSearchService,
     getWindow: () => mainWindow,
     onApprovalNeeded: () => conversation?.onApprovalNeeded(),
     lookAtScreen: (question, abortSignal) => visionService!.inspect(question, abortSignal),
@@ -1400,8 +1563,24 @@ app.whenReady().then(async () => {
   })
   await modelRegistry.initialize()
 
+  let changelog = ''
+  try {
+    changelog = await readFile(join(app.getAppPath(), 'CHANGELOG.md'), 'utf8')
+  } catch (error) {
+    console.error('Failed to read the bundled changelog:', error)
+  }
+  appUpdateService = new AppUpdateService({
+    currentVersion: app.getVersion(),
+    currentReleaseNotes: extractVersionNotes(changelog, app.getVersion()),
+    platform: process.platform,
+    arch: process.arch,
+    getWindow: () => mainWindow,
+    openExternal: (url) => shell.openExternal(url)
+  })
+
   registerIpc()
   createWindow()
+  void appUpdateService.check()
   createFlyoverWindow()
   createTray()
   dictationController = new DictationController({
@@ -1414,6 +1593,7 @@ app.whenReady().then(async () => {
     writeClipboard: (text) => clipboard.writeText(text),
     interruptAssistant: () => {
       assistantFlyoverActive = false
+      assistantFlyoverMirroring = false
       assistantShortcutSilent = false
       assistantFlyoverComposing = false
       assistantFlyoverTyped = false
@@ -1486,6 +1666,13 @@ function asUserProfileDraft(value: unknown): UserProfileDraft {
   const record = isRecord(value) ? value : {}
   return {
     name: readString(record.name, 80),
+    about: readString(record.about, 500),
+    personalityProfile:
+      record.personalityProfile === 'direct' ||
+      record.personalityProfile === 'thoughtful' ||
+      record.personalityProfile === 'playful'
+        ? record.personalityProfile
+        : 'balanced',
     addressForm: record.addressForm === 'shoma' ? 'shoma' : 'to',
     languageMix: record.languageMix === 'persian' ? 'persian' : 'mixed',
     city: readString(record.city, 80),

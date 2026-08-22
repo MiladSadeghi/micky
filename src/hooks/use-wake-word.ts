@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { WakeWordStatus } from '@/lib/wake-word'
 import { playWakeChime, primeWakeChime } from '@/lib/wake-chime'
+import { audioInputConstraints } from '@/lib/audio-devices'
+import { DEFAULT_AUDIO_DEVICE_ID } from '@/lib/settings'
 
 type CaptureSession = {
   context: AudioContext
@@ -32,10 +34,38 @@ function describeCaptureError(error: unknown): string {
   return error instanceof Error ? error.message : 'شروع شنیدن عبارت بیدارباش ناموفق بود.'
 }
 
-export function useWakeWord(): WakeWordStatus | null {
+async function openInputStream(deviceId: string): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: audioInputConstraints(deviceId),
+      video: false
+    })
+  } catch (error) {
+    if (
+      deviceId !== DEFAULT_AUDIO_DEVICE_ID &&
+      error instanceof DOMException &&
+      (error.name === 'NotFoundError' || error.name === 'OverconstrainedError')
+    ) {
+      return navigator.mediaDevices.getUserMedia({
+        audio: audioInputConstraints(DEFAULT_AUDIO_DEVICE_ID),
+        video: false
+      })
+    }
+    throw error
+  }
+}
+
+export function useWakeWord(inputDeviceId = DEFAULT_AUDIO_DEVICE_ID): WakeWordStatus | null {
   const [status, setStatus] = useState<WakeWordStatus | null>(null)
+  const [deviceRevision, setDeviceRevision] = useState(0)
   const sessionRef = useRef<CaptureSession | null>(null)
   const generationRef = useRef(0)
+
+  useEffect(() => {
+    const handleDeviceChange = (): void => setDeviceRevision((current) => current + 1)
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange)
+    return () => navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange)
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -69,16 +99,7 @@ export function useWakeWord(): WakeWordStatus | null {
 
     void (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            autoGainControl: false,
-            channelCount: 1,
-            echoCancellation: false,
-            noiseSuppression: false,
-            sampleRate: 16_000
-          },
-          video: false
-        })
+        stream = await openInputStream(inputDeviceId)
         if (generationRef.current !== generation) {
           for (const track of stream.getTracks()) track.stop()
           return
@@ -137,7 +158,7 @@ export function useWakeWord(): WakeWordStatus | null {
       }
       if (context && !session) void context.close().catch(() => undefined)
     }
-  }, [status?.captureRequested])
+  }, [deviceRevision, inputDeviceId, status?.captureRequested])
 
   return status
 }

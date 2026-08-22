@@ -17,8 +17,9 @@ export const INITIAL_CONVERSATION_STATUS: ConversationStatus = {
   followupHeard: false
 }
 
-// ASR fires on coughs and room noise too; a blip should not count as talking.
+// ASR fires on coughs and room noise too. Count actual spoken characters so
+// punctuation or a single letter padded with symbols cannot become an agent turn.
 export function hasSpokenText(text: string): boolean {
-  const trimmed = text.trim()
-  return trimmed.length >= 2 && /\p{L}/u.test(trimmed)
+  const spokenCharacters = text.match(/[\p{L}\p{N}]/gu)
+  return (spokenCharacters?.length ?? 0) >= 2
 }

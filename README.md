@@ -59,16 +59,16 @@ The renderer only handles the orb, microphone capture, status, settings, and the
 
 Micky is local-first, but not automatically cloud-free. What leaves your computer depends on the providers and features you choose.
 
-| Data or feature        | Where it goes                                                                                                 |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Wake-word audio        | Processed locally; not sent to a wake-word service                                                            |
-| Speech recognition     | Processed locally by Shenava after the model is downloaded                                                    |
-| Conversation history   | Stored locally in SQLite; history can be disabled or cleared                                                  |
-| API keys               | Stored in the operating system keychain                                                                       |
-| Agent requests         | Sent to your selected LLM endpoint; Ollama and LM Studio can remain local                                     |
-| Spoken replies         | Sent to Gemini or ElevenLabs only when that optional TTS provider is enabled                                  |
-| Screen content         | Captured only after an explicit screen request and disclosure, then sent to the selected vision-capable model |
-| File and command tools | Run locally and only when system tools are enabled                                                            |
+| Data or feature        | Where it goes                                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Wake-word audio        | Processed locally; not sent to a wake-word service                                                             |
+| Speech recognition     | Processed locally by Shenava after the model is downloaded                                                     |
+| Conversation history   | Stored locally in SQLite; history can be disabled or cleared                                                   |
+| API keys               | Stored in the operating system keychain                                                                        |
+| Agent requests         | Sent to your selected LLM endpoint; Ollama and LM Studio can remain local                                      |
+| Spoken replies         | Sent to Gemini or ElevenLabs only when that optional TTS provider is enabled                                   |
+| Screen content         | Captured only after an explicit screen request and disclosure, then sent to the selected vision-capable model  |
+| File and command tools | Run locally and only when system tools are enabled                                                             |
 
 There is no analytics or telemetry code in the app. For the most private setup, use a local Shenava model with Ollama or LM Studio, keep cloud TTS disabled, and leave system tools off unless you need them.
 

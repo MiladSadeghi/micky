@@ -37,6 +37,8 @@ test('parseUserProfileDraft restores onboarding choices and preserves hidden pro
     parseUserProfileDraft(`# User Profile
 
 - Name: Mani
+- About: Building Micky and values direct feedback
+- Personality profile: playful companion — light, witty, and energetic
 - Address form: formal shoma
 - Language: Persian only
 - City: Tehran
@@ -46,6 +48,8 @@ test('parseUserProfileDraft restores onboarding choices and preserves hidden pro
 `),
     {
       name: 'Mani',
+      about: 'Building Micky and values direct feedback',
+      personalityProfile: 'playful',
       addressForm: 'shoma',
       languageMix: 'persian',
       city: 'Tehran',

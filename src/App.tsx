@@ -7,10 +7,10 @@ import {
   RotateCcw,
   Settings
 } from 'lucide-react'
-import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip'
 import { useEffect, useState } from 'react'
 import { ThinkingOrb, type OrbState } from 'thinking-orbs'
 import { AgentReplyView } from '@/components/agent-reply-view'
+import { AppUpdateNotice } from '@/components/app-update-notice'
 import { ChatDetailView, ChatHistoryView } from '@/components/chat-history-view'
 import { ConversationPreview } from '@/components/conversation-preview'
 import { MickyLogo } from '@/components/micky-logo'
@@ -26,6 +26,7 @@ import { OnboardingView } from '@/components/onboarding-view'
 import { SettingsView } from '@/components/settings-view'
 import { TranscriptView } from '@/components/transcript-view'
 import { useAgent } from '@/hooks/use-agent'
+import { useAppUpdate } from '@/hooks/use-app-update'
 import { useConversation } from '@/hooks/use-conversation'
 import { useChats } from '@/hooks/use-chats'
 import { useModels } from '@/hooks/use-models'
@@ -41,7 +42,7 @@ import { cn } from '@/lib/utils'
 const PHASE_LABEL = {
   disabled: 'شنیدن خاموش است',
   loading: 'یک لحظه…',
-  listening: 'بگو «هی میکی»',
+  listening: 'بگو «میکی» یا «هی میکی»',
   activated: 'گوش می‌دم…',
   followup: 'ادامه بده…',
   confirm: 'بگو آره یا نه',
@@ -72,55 +73,50 @@ function FollowupTimer({ until }: { until: number }): React.JSX.Element {
   )
 }
 
-type FooterButtonProps = Omit<React.ComponentProps<typeof Button>, 'aria-label'> & {
+type FooterButtonProps = Omit<React.ComponentProps<typeof Button>, 'aria-label' | 'size'> & {
   label: string
+  shortLabel?: string
 }
 
-function FooterButton({ label, children, ...props }: FooterButtonProps): React.JSX.Element {
+function FooterButton({
+  label,
+  shortLabel,
+  children,
+  ...props
+}: FooterButtonProps): React.JSX.Element {
   return (
-    <TooltipPrimitive.Root>
-      <TooltipPrimitive.Trigger
-        delay={0}
-        render={
-          <Button
-            variant="outline"
-            size="icon-lg"
-            className="size-11 rounded-xl border-grey-800 text-muted-foreground hover:border-grey-700 [&_svg]:size-5"
-            aria-label={label}
-            {...props}
-          />
-        }
-      >
-        {children}
-      </TooltipPrimitive.Trigger>
-      <TooltipPrimitive.Portal>
-        <TooltipPrimitive.Positioner side="top" sideOffset={8}>
-          <TooltipPrimitive.Popup
-            className="z-50 rounded-lg border border-border/70 bg-popover/95 px-2 py-1 text-[0.65rem] text-popover-foreground shadow-lg backdrop-blur-sm data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95"
-          >
-            {label}
-          </TooltipPrimitive.Popup>
-        </TooltipPrimitive.Positioner>
-      </TooltipPrimitive.Portal>
-    </TooltipPrimitive.Root>
+    <Button
+      variant="ghost"
+      size="sm"
+      className="home-dock-action h-9 rounded-xl px-2.5 text-[0.68rem] text-muted-foreground"
+      aria-label={label}
+      {...props}
+    >
+      {children}
+      <span>{shortLabel ?? label}</span>
+    </Button>
   )
 }
 
 function App(): React.JSX.Element {
   const [screen, setScreen] = useState<'home' | 'history' | 'chat' | 'settings'>('home')
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
-  const status = useWakeWord()
+  const [firstConversationName, setFirstConversationName] = useState<string | null>(null)
+  const [wakeWordTogglePending, setWakeWordTogglePending] = useState(false)
+  const [wakeWordToggleError, setWakeWordToggleError] = useState<string | null>(null)
+  const settings = useSettings()
+  const appUpdate = useAppUpdate()
+  const status = useWakeWord(settings?.inputDeviceId)
   const speech = useSpeech()
   const models = useModels()
   const soul = useSoul()
-  const settings = useSettings()
   const agent = useAgent()
   const conversation = useConversation()
   const chats = useChats()
-  const tts = useTts()
+  const tts = useTts(settings?.outputDeviceId)
   const onboardingActive = soul?.onboardingCompleted === false
   useTurnCues(conversation)
-  useEarcons(window.api.app.onEarcon)
+  useEarcons(window.api.app.onEarcon, settings?.outputDeviceId)
   useEffect(() => window.api.app.onOpenSettings(() => setScreen('settings')), [])
   useEffect(() => {
     void window.api.app.setWindowMode(
@@ -130,6 +126,10 @@ function App(): React.JSX.Element {
   const phase = status?.phase ?? 'loading'
   const enabled = status?.enabled ?? true
   const isActivated = phase === 'activated'
+  useEffect(() => {
+    if (isActivated) setFirstConversationName(null)
+  }, [isActivated])
+  const isAgentMode = conversation?.mode === 'agent'
   const isFollowup = conversation?.mode === 'followup'
   const isConfirm = conversation?.mode === 'confirm' || agent?.phase === 'confirm'
   const followupOpen = isFollowup && !conversation?.followupHeard
@@ -145,15 +145,16 @@ function App(): React.JSX.Element {
     agent?.phase === 'confirm' ||
     agent?.phase === 'speaking'
   const ttsBusy = tts.status.phase === 'synthesizing' || tts.status.phase === 'playing'
-  const responseBusy = agentBusy || ttsBusy
+  const responseBusy = agentBusy || ttsBusy || isAgentMode
   const showAgent =
     Boolean(agentTurn) &&
-    (agentBusy || ttsBusy || agent?.phase === 'error' || isFollowup || isConfirm) &&
+    (agentBusy || ttsBusy || isAgentMode || agent?.phase === 'error' || isFollowup || isConfirm) &&
     !(isActivated && transcript?.text && !transcript.isFinal && !isConfirm)
   const showTranscript = isActivated && Boolean(transcript?.text) && !showAgent
   const showFollowupPrompt = followupOpen && !showTranscript && !responseBusy
   const sessionActive = speech?.phase === 'listening' || speech?.phase === 'loading'
   const error =
+    wakeWordToggleError ??
     (tts.status.phase === 'error' ? tts.status.error : null) ??
     (showAgent ? agent?.error : null) ??
     (isActivated ? speech?.error : null) ??
@@ -169,6 +170,15 @@ function App(): React.JSX.Element {
     !responseBusy &&
     !showTranscript &&
     (!isActivated || isFollowup)
+  const showIdleGuide =
+    !modelUnavailable &&
+    !hasConversation &&
+    !error &&
+    !responseBusy &&
+    !isActivated &&
+    !isFollowup &&
+    phase === 'listening'
+  const showFirstConversationPrompt = firstConversationName !== null && showIdleGuide
 
   const orbState: OrbState = modelUnavailable
     ? 'breathing'
@@ -196,6 +206,7 @@ function App(): React.JSX.Element {
       return
     }
     if (isLoading) return
+    setFirstConversationName(null)
     if (phase === 'error') {
       void window.api.wakeWord.retry()
       return
@@ -205,6 +216,20 @@ function App(): React.JSX.Element {
 
   const handleStartFresh = (): void => {
     void window.api.agent.reset()
+  }
+
+  const handleListeningToggle = async (): Promise<void> => {
+    if (wakeWordTogglePending) return
+    setWakeWordTogglePending(true)
+    setWakeWordToggleError(null)
+    try {
+      await window.api.wakeWord.setEnabled(!enabled)
+    } catch (cause) {
+      console.error('Failed to change wake-word setting:', cause)
+      setWakeWordToggleError('تغییر وضعیت شنیدن ذخیره نشد. دوباره تلاش کن.')
+    } finally {
+      setWakeWordTogglePending(false)
+    }
   }
 
   const handleOpenChat = (chatId: string): void => {
@@ -227,6 +252,10 @@ function App(): React.JSX.Element {
         ttsSnapshot={tts.snapshot}
         existingUserMarkdown={soul.files.user}
         settings={settings}
+        onFinished={(name) => {
+          setFirstConversationName(name)
+          setScreen('home')
+        }}
       />
     )
   }
@@ -238,6 +267,7 @@ function App(): React.JSX.Element {
         ttsSnapshot={tts.snapshot}
         chatsSnapshot={chats}
         settings={settings}
+        appUpdate={appUpdate}
         sessionActive={sessionActive}
         onBack={() => setScreen('home')}
       />
@@ -268,25 +298,37 @@ function App(): React.JSX.Element {
 
   return (
     <main className="voice-shell flex min-h-full flex-col overflow-hidden text-center">
-      <header className="app-titlebar flex items-center justify-center" aria-hidden="true">
-        <MickyLogo className="size-5 opacity-55" />
+      <header className="app-titlebar flex items-center justify-center">
+        <div className="home-brand" aria-label="میکی">
+          <MickyLogo className="size-5" aria-hidden="true" />
+          <span>میکی</span>
+        </div>
       </header>
 
-      <section className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6">
-        <div className="flex min-h-9 max-w-80 items-center">
+      <AppUpdateNotice snapshot={appUpdate} />
+
+      <section className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 px-6 pb-2">
+        <div className="flex min-h-8 max-w-80 items-center">
           {modelUnavailable ? (
-            <p className="text-xs text-muted-foreground">برای شروع یه مدل شنوا لازمه</p>
+            <span className="home-status">مدل شنیدن آماده نیست</span>
           ) : activeChat ? (
             <Button
               variant="ghost"
               size="sm"
-              className="max-w-80 text-muted-foreground"
+              className="home-chat-title max-w-80 text-muted-foreground"
               onClick={() => handleOpenChat(activeChat.id)}
             >
               <span className="truncate">{activeChat.title}</span>
             </Button>
           ) : (
-            <p className="text-xs text-muted-foreground">همراه کوچیکت برای انجام کارها</p>
+            <span className="home-status">
+              <span
+                className="home-status-dot"
+                data-active={phase === 'listening'}
+                aria-hidden="true"
+              />
+              {enabled ? 'آماده برای شنیدن' : 'شنیدن خاموش است'}
+            </span>
           )}
         </div>
         <button
@@ -389,6 +431,20 @@ function App(): React.JSX.Element {
             />
           ) : activeChat && !error && !isActivated && !isFollowup ? (
             <ConversationPreview chat={activeChat} onOpen={() => handleOpenChat(activeChat.id)} />
+          ) : showFirstConversationPrompt ? (
+            <div className="home-idle-copy">
+              <h1>
+                {firstConversationName
+                  ? `سلام ${firstConversationName}، از چی شروع کنیم؟`
+                  : 'سلام، از چی شروع کنیم؟'}
+              </h1>
+              <span>روی گوی بزن یا بگو «میکی»؛ یه سؤال بپرس یا یه کار بهم بسپر.</span>
+            </div>
+          ) : showIdleGuide ? (
+            <div className="home-idle-copy">
+              <h1>{PHASE_LABEL.listening}</h1>
+              <span>یا برای شروع روی گوی بزن</span>
+            </div>
           ) : (
             <p
               className={cn(
@@ -396,13 +452,20 @@ function App(): React.JSX.Element {
                 error && 'text-sm font-normal leading-6 text-muted-foreground'
               )}
             >
-              {error ?? (showFollowupPrompt ? PHASE_LABEL.followup : PHASE_LABEL[phase])}
+              {error ??
+                (showFollowupPrompt
+                  ? PHASE_LABEL.followup
+                  : showContinuePrompt
+                    ? `برای ادامه، ${PHASE_LABEL.listening}`
+                    : PHASE_LABEL[phase])}
             </p>
           )}
           {showFollowupPrompt && showAgent ? (
             <p className="followup-hint">{PHASE_LABEL.followup}</p>
           ) : null}
-          {showContinuePrompt ? <p className="followup-hint">{PHASE_LABEL.listening}</p> : null}
+          {showContinuePrompt && activeChat ? (
+            <p className="followup-hint">برای ادامه، {PHASE_LABEL.listening}</p>
+          ) : null}
           {showFreshAction ? (
             <Button
               variant="ghost"
@@ -416,43 +479,43 @@ function App(): React.JSX.Element {
         </div>
       </section>
 
-      <footer className="flex items-center justify-center gap-1 pb-5">
-        <FooterButton
-          label="گفتگوهای قبلی"
-          onClick={() => setScreen('history')}
-        >
-          <History />
-        </FooterButton>
-        {hasConversation && !showFreshAction ? (
+      <footer className="flex items-center justify-center px-4 pb-5">
+        <nav className="home-dock" aria-label="دسترسی‌های میکی">
           <FooterButton
-            label="گفتگوی تازه"
-            onClick={handleStartFresh}
+            label="گفتگوهای قبلی"
+            shortLabel="گفتگوها"
+            onClick={() => setScreen('history')}
           >
-            <MessageSquarePlus />
+            <History />
           </FooterButton>
-        ) : null}
-        {phase === 'error' ? (
-          <FooterButton
-            label="تلاش دوباره"
-            onClick={() => void window.api.wakeWord.retry()}
-          >
-            <RotateCcw />
+          {hasConversation && !showFreshAction ? (
+            <FooterButton label="گفتگوی تازه" onClick={handleStartFresh}>
+              <MessageSquarePlus />
+            </FooterButton>
+          ) : null}
+          {phase === 'error' ? (
+            <FooterButton
+              label="تلاش دوباره"
+              shortLabel="دوباره"
+              onClick={() => void window.api.wakeWord.retry()}
+            >
+              <RotateCcw />
+            </FooterButton>
+          ) : (
+            <FooterButton
+              label={enabled ? 'خاموش‌کردن شنیدن' : 'روشن‌کردن شنیدن'}
+              shortLabel="شنیدن"
+              onClick={() => void handleListeningToggle()}
+              disabled={wakeWordTogglePending}
+              aria-pressed={enabled}
+            >
+              {enabled ? <Mic /> : <MicOff />}
+            </FooterButton>
+          )}
+          <FooterButton label="تنظیمات" onClick={() => setScreen('settings')}>
+            <Settings />
           </FooterButton>
-        ) : (
-          <FooterButton
-            label={enabled ? 'خاموش‌کردن شنیدن' : 'روشن‌کردن شنیدن'}
-            onClick={() => void window.api.wakeWord.setEnabled(!enabled)}
-            aria-pressed={enabled}
-          >
-            {enabled ? <Mic /> : <MicOff />}
-          </FooterButton>
-        )}
-        <FooterButton
-          label="تنظیمات"
-          onClick={() => setScreen('settings')}
-        >
-          <Settings />
-        </FooterButton>
+        </nav>
       </footer>
     </main>
   )

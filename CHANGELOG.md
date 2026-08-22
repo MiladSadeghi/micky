@@ -2,6 +2,14 @@
 
 All notable changes to Micky are documented here.
 
+## Unreleased
+
+### Added
+
+- A version and changelog section in Settings with an on-demand update check.
+- A launch-time GitHub release check and compact update notices on Home and in Settings.
+- Platform- and architecture-aware download links with a safe fallback to the release page.
+
 ## 0.0.4 — 2026-08-21
 
 ### Added

@@ -5,6 +5,7 @@ import type { LlmProvider, LlmProviderCapabilities } from './provider'
 
 type OpenRouterProviderOptions = {
   getApiKey: () => string | null
+  fetch?: typeof globalThis.fetch
 }
 
 export class OpenRouterProvider implements LlmProvider {
@@ -44,25 +45,37 @@ export class OpenRouterProvider implements LlmProvider {
     const apiKey = this.options.getApiKey()
     if (!apiKey) return catalog
     try {
-      const response = await fetch(OPENROUTER_MODELS_URL, {
+      const response = await (this.options.fetch ?? globalThis.fetch)(OPENROUTER_MODELS_URL, {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(8_000)
       })
       if (!response.ok) return catalog
       const payload = (await response.json()) as unknown
       const records = readModelRecords(payload)
-      return catalog.map((model) => ({
-        ...model,
-        inputModalities: records.get(model.id) ?? model.inputModalities
-      }))
+      return catalog.map((model) => {
+        const record = records.get(model.id)
+        return {
+          ...model,
+          inputModalities: record?.inputModalities ?? model.inputModalities,
+          supportsReasoning:
+            record?.supportedParameters != null
+              ? record.supportedParameters.includes('reasoning')
+              : model.supportsReasoning
+        }
+      })
     } catch {
       return catalog
     }
   }
 }
 
-function readModelRecords(payload: unknown): Map<string, string[]> {
-  const output = new Map<string, string[]>()
+type OpenRouterModelRecord = {
+  inputModalities: string[] | null
+  supportedParameters: string[] | null
+}
+
+function readModelRecords(payload: unknown): Map<string, OpenRouterModelRecord> {
+  const output = new Map<string, OpenRouterModelRecord>()
   if (
     !payload ||
     typeof payload !== 'object' ||
@@ -86,7 +99,18 @@ function readModelRecords(payload: unknown): Map<string, string[]> {
             (value: unknown): value is string => typeof value === 'string'
           )
         : []
-    if (id && modalities.length > 0) output.set(id, modalities)
+    const supportedParameters =
+      'supported_parameters' in item && Array.isArray(item.supported_parameters)
+        ? item.supported_parameters.filter(
+            (value: unknown): value is string => typeof value === 'string'
+          )
+        : null
+    if (id) {
+      output.set(id, {
+        inputModalities: modalities.length > 0 ? modalities : null,
+        supportedParameters
+      })
+    }
   }
   return output
 }

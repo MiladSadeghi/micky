@@ -9,6 +9,10 @@ export const ASR_PENDING_AUDIO_LIMIT_MS = 30_000
 // Sherpa's rule 3 is a hard utterance-length endpoint. Keep it out of the way
 // and let the trailing-silence rules decide when a person has finished.
 export const ASR_RULE3_UTTERANCE_LIMIT_SECONDS = 60 * 60
+// Endpoint detection can split speech at a short thinking pause. Preserve the
+// segment and wait for a more deliberate silence before submitting it.
+export const ASR_CONVERSATION_END_SILENCE_MS = 1_800
+export const ASR_DICTATION_END_SILENCE_MS = 3_000
 export const ASR_FINAL_HOLD_MS = 900
 export const ASR_PROGRESS_BROADCAST_INTERVAL_MS = 240
 export const ASR_NUM_THREADS = 2

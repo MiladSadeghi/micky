@@ -22,6 +22,8 @@ Durable facts Micky learns over time. Keep one stable fact per bullet.
 
 export const USER_FIELD_LABELS = {
   name: 'Name',
+  about: 'About',
+  personalityProfile: 'Personality profile',
   addressForm: 'Address form',
   languageMix: 'Language',
   city: 'City',

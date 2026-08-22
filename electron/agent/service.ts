@@ -13,13 +13,14 @@ import {
 } from '@/lib/agent'
 import type { LlmService } from '../llm/service'
 import type { SettingsStore } from '../settings/store'
-import { buildSystemPrompt } from '../soul/prompt'
+import { buildSystemInstructions, type AgentResponseSurface } from '../soul/prompt'
 import type { SoulStore } from '../soul/store'
 import type { ApprovalRequest } from '../system/exec'
-import { createAgentTools } from './tools'
+import { activeAgentToolNames, createAgentTools } from './tools'
 import { hasExplicitScreenIntent } from '../vision/intent'
 import type { ChatStore } from '../chats/store'
 import type { SkillService } from '../skills/service'
+import type { WebSearchService } from '../web-search/service'
 
 type AgentServiceOptions = {
   settings: SettingsStore
@@ -27,10 +28,17 @@ type AgentServiceOptions = {
   soul: SoulStore
   chats?: ChatStore
   skills?: SkillService
+  webSearch?: WebSearchService
   getWindow: () => BrowserWindow | null
   onApprovalNeeded?: () => void
   lookAtScreen?: (question: string, abortSignal?: AbortSignal) => Promise<string>
   onStatusChange?: (status: AgentStatus) => void
+}
+
+type AgentRespondOptions = {
+  responseSurface?: AgentResponseSurface
+  speechEnabled?: boolean
+  sessionId?: string
 }
 
 export class AgentService {
@@ -87,7 +95,10 @@ export class AgentService {
     pending(approved)
   }
 
-  async respond(userText: string): Promise<'completed' | 'ended' | 'aborted' | 'skipped'> {
+  async respond(
+    userText: string,
+    options: AgentRespondOptions = {}
+  ): Promise<'completed' | 'ended' | 'aborted' | 'skipped'> {
     const text = userText.trim()
     if (!text) return 'skipped'
 
@@ -134,15 +145,42 @@ export class AgentService {
           screenCaptureConsumed = true
           return this.options.lookAtScreen?.(question, abort.signal) ?? 'دیدن صفحه در دسترس نیست.'
         },
-        skills: this.options.skills
+        skills: this.options.skills,
+        webSearch: this.options.webSearch
       })
+      const toolOrder = Object.keys(tools)
+      const initialActiveTools = activeAgentToolNames(tools)
+      const isOpenRouter = settings.llm.providerId === 'openrouter'
+      const reasoningEffort = this.options.llm.getReasoningEffort()
+      const openRouterOptions = {
+        ...(options.sessionId ? { session_id: options.sessionId } : {}),
+        ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {})
+      }
       const agent = new ToolLoopAgent({
         model: this.options.llm.getModel(),
-        instructions: buildSystemPrompt(
+        instructions: buildSystemInstructions(
           files,
-          skills?.enabled ? skills.skills.filter((skill) => skill.enabled) : []
+          skills?.enabled ? skills.skills.filter((skill) => skill.enabled) : [],
+          {
+            responseSurface: options.responseSurface,
+            speechEnabled: options.speechEnabled,
+            cacheStaticPrefix: isOpenRouter && settings.llm.modelId.startsWith('anthropic/')
+          }
         ),
         tools,
+        activeTools: initialActiveTools,
+        toolOrder,
+        prepareStep: ({ steps }) => ({
+          activeTools: activeAgentToolNames(tools, {
+            chatSearchCompleted: steps.some((step) =>
+              step.toolCalls.some((toolCall) => toolCall.toolName === 'search_chats')
+            )
+          })
+        }),
+        ...(isOpenRouter && (options.sessionId || reasoningEffort)
+          ? { providerOptions: { openrouter: openRouterOptions } }
+          : {}),
+        ...(!isOpenRouter && reasoningEffort ? { reasoning: reasoningEffort } : {}),
         temperature: settings.llm.temperature,
         stopWhen: isStepCount(AGENT_MAX_STEPS)
       })
@@ -181,7 +219,18 @@ export class AgentService {
 
       if (abort.signal.aborted) return 'aborted'
 
-      const responseMessages = await result.responseMessages
+      const [responseMessages, usage, steps] = await Promise.all([
+        result.responseMessages,
+        result.usage,
+        result.steps
+      ])
+      console.info('[agent] model usage', {
+        inputTokens: usage.inputTokens,
+        cacheReadTokens: usage.inputTokenDetails.cacheReadTokens,
+        cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens,
+        outputTokens: usage.outputTokens,
+        steps: steps.length
+      })
       if (endRequested) {
         this.#history = []
       } else {

@@ -5,9 +5,11 @@ import {
   LLM_PROVIDER_OPTIONS,
   LLM_SNAPSHOT_CHANNEL,
   isLlmProviderId,
+  isLlmReasoningEffort,
   isOpenAiCompatibleProviderId,
   type LlmModelInfo,
   type LlmProviderId,
+  type LlmReasoningEffort,
   type LlmSnapshot,
   type OpenAiCompatibleProviderId
 } from '@/lib/llm'
@@ -53,6 +55,12 @@ export class LlmService {
 
   getSnapshot(): LlmSnapshot {
     return this.#snapshot
+  }
+
+  getReasoningEffort(): Exclude<LlmReasoningEffort, 'default'> | null {
+    const settings = this.options.settings.get().llm
+    if (settings.reasoningEffort === 'default' || !this.#activeModelSupportsReasoning()) return null
+    return settings.reasoningEffort
   }
 
   isConfigured(): boolean {
@@ -146,6 +154,20 @@ export class LlmService {
       }
     })
     return this.refresh()
+  }
+
+  async setTemperature(temperature: number): Promise<LlmSnapshot> {
+    if (!Number.isFinite(temperature)) throw new Error('دمای مدل معتبر نیست.')
+    await this.options.settings.update({
+      llm: { temperature: Math.min(2, Math.max(0, temperature)) }
+    })
+    return this.#rebuildAndEmit()
+  }
+
+  async setReasoningEffort(reasoningEffort: LlmReasoningEffort): Promise<LlmSnapshot> {
+    if (!isLlmReasoningEffort(reasoningEffort)) throw new Error('میزان استدلال معتبر نیست.')
+    await this.options.settings.update({ llm: { reasoningEffort } })
+    return this.#rebuildAndEmit()
   }
 
   async setVisionModel(modelId: string): Promise<LlmSnapshot> {
@@ -255,8 +277,16 @@ export class LlmService {
       local: option.local,
       keychainAvailable: this.options.secrets.keychainAvailable,
       configured: this.isConfigured(),
+      temperature: settings.llm.temperature,
+      reasoningEffort: settings.llm.reasoningEffort,
+      supportsReasoning: this.#activeModelSupportsReasoning(known),
       error: configurationError
     }
+  }
+
+  #activeModelSupportsReasoning(catalog = this.#snapshot.catalog): boolean {
+    const modelId = this.options.settings.get().llm.modelId
+    return catalog.some((model) => model.id === modelId && model.supportsReasoning === true)
   }
 
   #rebuildAndEmit(): LlmSnapshot {

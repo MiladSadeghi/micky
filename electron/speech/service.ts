@@ -1,5 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import {
+  ASR_CONVERSATION_END_SILENCE_MS,
+  ASR_DICTATION_END_SILENCE_MS,
   ASR_FINAL_HOLD_MS,
   ASR_PENDING_AUDIO_LIMIT_MS,
   ASR_SAMPLE_RATE,
@@ -13,10 +15,10 @@ import {
 } from '@/lib/asr'
 import type { ModelRegistry } from '../models/registry'
 import type { SettingsStore } from '../settings/store'
-import { LocalShenavaProvider, type SpeechProvider } from './provider'
+import type { SpeechProvider, SpeechProviderHandlers } from './provider'
+import { normalizeAsrTranscript } from './transcript-normalizer'
 
-type SpeechServiceOptions = {
-  scriptPath: string
+export type SpeechServiceOptions = {
   models: ModelRegistry
   settings: SettingsStore
   getWindow: () => BrowserWindow | null
@@ -24,6 +26,7 @@ type SpeechServiceOptions = {
   onSessionEnd: (mode: SpeechSessionMode) => void
   onPartialTranscript?: (text: string, mode: SpeechSessionMode) => void
   onFinalTranscript?: (text: string, mode: SpeechSessionMode) => void
+  createProvider: (handlers: SpeechProviderHandlers) => SpeechProvider
 }
 
 export class SpeechService {
@@ -39,18 +42,16 @@ export class SpeechService {
   #pendingSamples = 0
   #sessionMode: SpeechSessionMode = 'conversation'
   #stableSegments: string[] = []
-  #dictationSilenceTimer: NodeJS.Timeout | null = null
+  #endpointGraceTimer: NodeJS.Timeout | null = null
 
   constructor(private readonly options: SpeechServiceOptions) {
-    this.#provider = new LocalShenavaProvider({
-      scriptPath: options.scriptPath,
-      handlers: {
-        onPartial: (text) => this.#onPartial(text),
-        onEndpoint: (text) => this.#onEndpoint(text),
-        onFinal: (text) => this.#onFinal(text),
-        onError: (error) => this.#onProviderError(error)
-      }
-    })
+    const handlers: SpeechProviderHandlers = {
+      onPartial: (text) => this.#onPartial(text),
+      onEndpoint: (text) => this.#onEndpoint(text),
+      onFinal: (text) => this.#onFinal(text),
+      onError: (error) => this.#onProviderError(error)
+    }
+    this.#provider = options.createProvider(handlers)
   }
 
   getStatus(): SpeechStatus {
@@ -88,7 +89,7 @@ export class SpeechService {
     this.#clearMaxTimer()
     this.#clearHoldTimer()
     this.#clearPending()
-    this.#clearDictationSilenceTimer()
+    this.#clearEndpointGraceTimer()
     this.#stableSegments = []
     this.#active = true
     this.#finalizing = false
@@ -152,7 +153,7 @@ export class SpeechService {
     this.#clearMaxTimer()
     this.#clearHoldTimer()
     this.#clearPending()
-    this.#clearDictationSilenceTimer()
+    this.#clearEndpointGraceTimer()
     try {
       this.#provider.stopUtterance()
     } catch {
@@ -169,7 +170,7 @@ export class SpeechService {
     this.#clearMaxTimer()
     this.#clearHoldTimer()
     this.#clearPending()
-    this.#clearDictationSilenceTimer()
+    this.#clearEndpointGraceTimer()
     this.#provider.dispose()
     this.#update({ phase: 'idle', ready: false, modelId: null, transcript: null, error: null })
   }
@@ -195,7 +196,7 @@ export class SpeechService {
   #onPartial(text: string): void {
     if (!this.#active) return
     this.#armStallTimer()
-    this.#clearDictationSilenceTimer()
+    this.#clearEndpointGraceTimer()
     const combined = this.#combinedText(text)
     this.#emitTranscript({
       sessionId: String(this.#sessionId),
@@ -209,37 +210,29 @@ export class SpeechService {
 
   #onEndpoint(text: string): void {
     if (!this.#active || this.#finalizing) return
-    if (!text.trim()) return
-    if (this.#sessionMode === 'dictation') {
-      this.#appendStable(text)
-      const combined = this.#combinedText('')
-      this.#emitTranscript({
-        sessionId: String(this.#sessionId),
-        text: combined,
-        isFinal: false,
-        updatedAt: Date.now(),
-        mode: this.#sessionMode
-      })
-      this.options.onPartialTranscript?.(combined, this.#sessionMode)
-      this.#provider.startUtterance()
-      this.#armDictationSilenceTimer()
-      return
-    }
+    const normalizedText = normalizeAsrTranscript(text)
+    if (!normalizedText) return
+    this.#appendStable(normalizedText)
+    const combined = this.#combinedText('')
     this.#emitTranscript({
       sessionId: String(this.#sessionId),
-      text,
+      text: combined,
       isFinal: false,
       updatedAt: Date.now(),
       mode: this.#sessionMode
     })
-    this.options.onPartialTranscript?.(text, this.#sessionMode)
-    this.finishSession()
+    this.options.onPartialTranscript?.(combined, this.#sessionMode)
+    this.#provider.startUtterance()
+    this.#armEndpointGraceTimer()
   }
 
   #onFinal(text: string): void {
     if (!this.#finalizing && !this.#active) return
     const mode = this.#sessionMode
-    const finalText = mode === 'dictation' ? this.#combinedText(text) : text
+    const normalizedText = normalizeAsrTranscript(text)
+    const finalText = normalizedText
+      ? normalizeAsrTranscript(this.#combinedText(normalizedText))
+      : normalizeAsrTranscript(this.#status.transcript?.text ?? this.#combinedText(''))
     const transcript: SpeechTranscript = {
       sessionId: String(this.#sessionId),
       text: finalText,
@@ -250,7 +243,7 @@ export class SpeechService {
     this.#active = false
     this.#finalizing = false
     this.#clearMaxTimer()
-    this.#clearDictationSilenceTimer()
+    this.#clearEndpointGraceTimer()
     this.#emitTranscript(transcript)
     this.#update({ phase: 'idle', transcript })
     this.options.onFinalTranscript?.(finalText, mode)
@@ -265,7 +258,7 @@ export class SpeechService {
     this.#finalizing = false
     this.#clearMaxTimer()
     this.#clearHoldTimer()
-    this.#clearDictationSilenceTimer()
+    this.#clearEndpointGraceTimer()
     this.#update({ phase: 'error', ready: false, error })
     this.options.onSessionEnd(this.#sessionMode)
   }
@@ -298,19 +291,23 @@ export class SpeechService {
     this.#maxTimer = setTimeout(() => this.finishSession(), ASR_STALL_TIMEOUT_MS)
   }
 
-  #armDictationSilenceTimer(): void {
-    this.#clearDictationSilenceTimer()
+  #armEndpointGraceTimer(): void {
+    this.#clearEndpointGraceTimer()
     const endpointSilenceMs = this.options.settings.get().endpoint.rule2MinTrailingSilence * 1_000
-    this.#dictationSilenceTimer = setTimeout(
+    const desiredSilenceMs =
+      this.#sessionMode === 'dictation'
+        ? ASR_DICTATION_END_SILENCE_MS
+        : ASR_CONVERSATION_END_SILENCE_MS
+    this.#endpointGraceTimer = setTimeout(
       () => this.finishSession(),
-      Math.max(250, 3_000 - endpointSilenceMs)
+      Math.max(250, desiredSilenceMs - endpointSilenceMs)
     )
   }
 
-  #clearDictationSilenceTimer(): void {
-    if (!this.#dictationSilenceTimer) return
-    clearTimeout(this.#dictationSilenceTimer)
-    this.#dictationSilenceTimer = null
+  #clearEndpointGraceTimer(): void {
+    if (!this.#endpointGraceTimer) return
+    clearTimeout(this.#endpointGraceTimer)
+    this.#endpointGraceTimer = null
   }
 
   #appendStable(text: string): void {

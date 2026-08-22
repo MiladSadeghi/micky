@@ -17,6 +17,8 @@ const SEEDS: Record<SoulFileId, string> = {
 const USER_FIELD_KEYS = Object.keys(USER_FIELD_LABELS) as Array<keyof typeof USER_FIELD_LABELS>
 const LEGACY_USER_FIELD_LABELS: Record<keyof typeof USER_FIELD_LABELS, string> = {
   name: 'نام',
+  about: 'درباره',
+  personalityProfile: 'سبک شخصیت',
   addressForm: 'خطاب',
   languageMix: 'زبان',
   city: 'شهر',
@@ -119,6 +121,8 @@ export function formatUserMarkdown(draft: UserProfileDraft): string {
     '# User Profile',
     '',
     `- ${USER_FIELD_LABELS.name}: ${draft.name.trim() || 'Unknown'}`,
+    `- ${USER_FIELD_LABELS.about}: ${formatPlainText(draft.about)}`,
+    `- ${USER_FIELD_LABELS.personalityProfile}: ${formatPersonalityProfile(draft.personalityProfile)}`,
     `- ${USER_FIELD_LABELS.addressForm}: ${formatAddressForm(draft.addressForm)}`,
     `- ${USER_FIELD_LABELS.languageMix}: ${formatLanguageMix(draft.languageMix)}`,
     `- ${USER_FIELD_LABELS.city}: ${draft.city.trim() || 'Unknown'}`,
@@ -132,6 +136,12 @@ export function formatUserMarkdown(draft: UserProfileDraft): string {
 
 function formatUserFieldValue(field: keyof typeof USER_FIELD_LABELS, value: string): string {
   const trimmed = value.trim()
+  if (field === 'personalityProfile') {
+    if (trimmed === 'direct') return formatPersonalityProfile('direct')
+    if (trimmed === 'thoughtful') return formatPersonalityProfile('thoughtful')
+    if (trimmed === 'playful') return formatPersonalityProfile('playful')
+    return formatPersonalityProfile('balanced')
+  }
   if (field === 'addressForm') {
     return formatAddressForm(trimmed === 'شما' || trimmed === 'shoma' ? 'shoma' : 'to')
   }
@@ -141,7 +151,19 @@ function formatUserFieldValue(field: keyof typeof USER_FIELD_LABELS, value: stri
   if (field === 'replyLength') {
     return formatReplyLength(trimmed === 'medium' || trimmed === 'متوسط' ? 'medium' : 'short')
   }
-  return trimmed || 'Unknown'
+  return formatPlainText(trimmed)
+}
+
+function formatPlainText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim() || 'Unknown'
+}
+
+function formatPersonalityProfile(value: UserProfileDraft['personalityProfile']): string {
+  if (value === 'direct') return 'direct operator — decisive, practical, and no fluff'
+  if (value === 'thoughtful')
+    return 'curious thinking partner — reflective, exploratory, and asks useful questions'
+  if (value === 'playful') return 'playful companion — light, witty, and energetic'
+  return 'balanced companion — warm, clear, and practical'
 }
 
 function formatAddressForm(value: UserProfileDraft['addressForm']): string {

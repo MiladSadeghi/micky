@@ -63,6 +63,25 @@ test('stores independent Gemini and ElevenLabs TTS keys', async () => {
   assert.equal(store.hasTtsApiKey('elevenlabs'), true)
 })
 
+test('stores independent Exa and Firecrawl search keys', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'micky-secrets-'))
+  const backend = memoryKeychain()
+  const store = new SecretStore(dir, { backend })
+  await store.load()
+
+  await store.setWebSearchApiKey('exa', 'exa-key')
+  await store.setWebSearchApiKey('firecrawl', 'fc-key')
+
+  assert.equal(store.getWebSearchApiKey('exa'), 'exa-key')
+  assert.equal(store.getWebSearchApiKey('firecrawl'), 'fc-key')
+  assert.equal(backend.getPassword('dev.micky.app', 'exa-search'), 'exa-key')
+  assert.equal(backend.getPassword('dev.micky.app', 'firecrawl-search'), 'fc-key')
+
+  await store.clearWebSearchApiKey('exa')
+  assert.equal(store.hasWebSearchApiKey('exa'), false)
+  assert.equal(store.hasWebSearchApiKey('firecrawl'), true)
+})
+
 test('stores independent keys for OpenRouter and compatible LLM providers', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'micky-secrets-'))
   const backend = memoryKeychain()

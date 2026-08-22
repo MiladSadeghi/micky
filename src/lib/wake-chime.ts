@@ -1,11 +1,31 @@
 let playbackContext: AudioContext | null = null
 let lastTurnDoneAt = 0
+let outputDeviceId = 'default'
+
+type SinkAudioContext = AudioContext & { setSinkId?: (sinkId: string) => Promise<void> }
 
 function getPlaybackContext(): AudioContext {
   if (!playbackContext || playbackContext.state === 'closed') {
     playbackContext = new AudioContext({ latencyHint: 'interactive' })
   }
   return playbackContext
+}
+
+async function applyPlaybackDevice(context: AudioContext): Promise<void> {
+  const sinkContext = context as SinkAudioContext
+  if (!sinkContext.setSinkId) return
+  try {
+    await sinkContext.setSinkId(outputDeviceId)
+  } catch {
+    if (outputDeviceId !== 'default') await sinkContext.setSinkId('default').catch(() => undefined)
+  }
+}
+
+export function setEarconOutputDevice(deviceId: string): void {
+  outputDeviceId = deviceId || 'default'
+  if (playbackContext && playbackContext.state !== 'closed') {
+    void applyPlaybackDevice(playbackContext)
+  }
 }
 
 function playTone(
@@ -50,11 +70,9 @@ function playTone(
 
 function playWhenReady(play: (context: AudioContext) => void): void {
   const context = getPlaybackContext()
-  if (context.state === 'running') {
-    play(context)
-    return
-  }
-  void context.resume().then(() => play(context))
+  void applyPlaybackDevice(context)
+    .then(() => (context.state === 'running' ? undefined : context.resume()))
+    .then(() => play(context))
 }
 
 export function primeWakeChime(): void {

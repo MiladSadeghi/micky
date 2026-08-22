@@ -5,11 +5,18 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { ASR_RULE3_UTTERANCE_LIMIT_SECONDS } from '@/lib/asr'
 import { DEFAULT_ASR_MODEL_ID } from '@/lib/asr-models'
-import { DEFAULT_LLM_BASE_URLS, DEFAULT_LLM_MODEL_ID } from '@/lib/llm'
+import {
+  DEFAULT_LLM_BASE_URLS,
+  DEFAULT_LLM_MODEL_ID,
+  DEFAULT_LLM_REASONING_EFFORT,
+  DEFAULT_LLM_TEMPERATURE
+} from '@/lib/llm'
 import { DEFAULT_TTS_SETTINGS } from '@/lib/tts'
+import { DEFAULT_WEB_SEARCH_SETTINGS } from '@/lib/web-search'
 import { DEFAULT_APP_SETTINGS, SettingsStore } from './store'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
+  DEFAULT_AUDIO_DEVICE_ID,
   DEFAULT_DICTATION_SHORTCUT,
   DEFAULT_FONT_FAMILY,
   DEFAULT_THEME,
@@ -29,7 +36,10 @@ test('loads defaults when no settings file exists', async () => {
   assert.equal(settings.llm.providerModelIds.openrouter, DEFAULT_LLM_MODEL_ID)
   assert.deepEqual(settings.llm.baseUrls, DEFAULT_LLM_BASE_URLS)
   assert.deepEqual(settings.llm.customModelIds, [])
+  assert.equal(settings.llm.temperature, DEFAULT_LLM_TEMPERATURE)
+  assert.equal(settings.llm.reasoningEffort, DEFAULT_LLM_REASONING_EFFORT)
   assert.deepEqual(settings.tts, DEFAULT_TTS_SETTINGS)
+  assert.deepEqual(settings.webSearch, DEFAULT_WEB_SEARCH_SETTINGS)
   assert.equal(settings.assistantShortcut, DEFAULT_ASSISTANT_SHORTCUT)
   assert.equal(settings.dictationShortcut, DEFAULT_DICTATION_SHORTCUT)
   assert.equal(settings.wakeWordShortcut, DEFAULT_WAKE_WORD_SHORTCUT)
@@ -43,6 +53,8 @@ test('loads defaults when no settings file exists', async () => {
   assert.deepEqual(settings.disabledSkillIds, [])
   assert.equal(settings.theme, DEFAULT_THEME)
   assert.equal(settings.fontFamily, DEFAULT_FONT_FAMILY)
+  assert.equal(settings.inputDeviceId, DEFAULT_AUDIO_DEVICE_ID)
+  assert.equal(settings.outputDeviceId, DEFAULT_AUDIO_DEVICE_ID)
 })
 
 test('normalizes invalid persisted values on load', async () => {
@@ -55,9 +67,12 @@ test('normalizes invalid persisted values on load', async () => {
       onboardingCompleted: 1,
       llm: {
         modelId: '  custom/model  ',
-        customModelIds: ['', 'qwen/qwen3.7-flash', 'ok/model']
+        customModelIds: ['', 'qwen/qwen3.7-flash', 'ok/model'],
+        temperature: 8,
+        reasoningEffort: 'extreme'
       },
-      tts: { providerId: 'bad', geminiVoice: 'bad', elevenLabsVoiceId: 4 }
+      tts: { providerId: 'bad', geminiVoice: 'bad', elevenLabsVoiceId: 4 },
+      webSearch: { enabledProviders: ['exa', 'bad', 'exa', 'google'] }
     }),
     'utf8'
   )
@@ -69,7 +84,10 @@ test('normalizes invalid persisted values on load', async () => {
   assert.equal(settings.onboardingCompleted, false)
   assert.equal(settings.llm.modelId, 'custom/model')
   assert.deepEqual(settings.llm.customModelIds, ['ok/model'])
+  assert.equal(settings.llm.temperature, 2)
+  assert.equal(settings.llm.reasoningEffort, DEFAULT_LLM_REASONING_EFFORT)
   assert.deepEqual(settings.tts, DEFAULT_TTS_SETTINGS)
+  assert.deepEqual(settings.webSearch.enabledProviders, ['exa', 'google'])
   assert.equal(settings.assistantShortcut, DEFAULT_ASSISTANT_SHORTCUT)
   assert.equal(settings.wakeWordShortcut, DEFAULT_WAKE_WORD_SHORTCUT)
   assert.equal(settings.dictationAiCleanup, true)
@@ -98,6 +116,26 @@ test('normalizes and persists appearance settings', async () => {
   const normalized = await store.load()
   assert.equal(normalized.theme, DEFAULT_THEME)
   assert.equal(normalized.fontFamily, DEFAULT_FONT_FAMILY)
+})
+
+test('normalizes and persists audio device settings', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'micky-settings-'))
+  const store = new SettingsStore(dir)
+  await store.load()
+  await store.update({ inputDeviceId: ' mic-1 ', outputDeviceId: 'speaker-1' })
+
+  const settings = await store.load()
+  assert.equal(settings.inputDeviceId, 'mic-1')
+  assert.equal(settings.outputDeviceId, 'speaker-1')
+
+  await writeFile(
+    join(dir, 'settings.json'),
+    JSON.stringify({ inputDeviceId: '', outputDeviceId: 4 }),
+    'utf8'
+  )
+  const normalized = await store.load()
+  assert.equal(normalized.inputDeviceId, DEFAULT_AUDIO_DEVICE_ID)
+  assert.equal(normalized.outputDeviceId, DEFAULT_AUDIO_DEVICE_ID)
 })
 
 test('migrates the old twenty-second utterance endpoint', async () => {
@@ -158,4 +196,47 @@ test('persists a patch to disk', async () => {
     providerId: 'elevenlabs',
     elevenLabsVoiceId: 'voice-1'
   })
+})
+
+test('serializes concurrent settings writes without losing the latest values', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'micky-settings-'))
+  const store = new SettingsStore(dir)
+  await store.load()
+
+  await Promise.all([
+    store.update({ theme: 'light' }),
+    store.update({ wakeWordEnabled: false }),
+    store.update({ outputDeviceId: 'speaker-1' })
+  ])
+
+  const persisted = JSON.parse(await readFile(join(dir, 'settings.json'), 'utf8')) as {
+    theme: string
+    wakeWordEnabled: boolean
+    outputDeviceId: string
+  }
+  assert.equal(persisted.theme, 'light')
+  assert.equal(persisted.wakeWordEnabled, false)
+  assert.equal(persisted.outputDeviceId, 'speaker-1')
+})
+
+test('persists advanced LLM settings', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'micky-settings-'))
+  const store = new SettingsStore(dir)
+  await store.load()
+  await store.update({ llm: { temperature: 0.3, reasoningEffort: 'none' } })
+
+  const settings = await store.load()
+  assert.equal(settings.llm.temperature, 0.3)
+  assert.equal(settings.llm.reasoningEffort, 'none')
+})
+
+test('persists enabled web search providers with all providers off by default', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'micky-settings-'))
+  const store = new SettingsStore(dir)
+  await store.load()
+  assert.deepEqual(store.get().webSearch.enabledProviders, [])
+
+  await store.update({ webSearch: { enabledProviders: ['firecrawl', 'google'] } })
+  const settings = await store.load()
+  assert.deepEqual(settings.webSearch.enabledProviders, ['firecrawl', 'google'])
 })

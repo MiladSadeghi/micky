@@ -1,6 +1,25 @@
-import { Check, ChevronDown, LoaderCircle, ShieldCheck, Terminal, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import {
+  AppWindow,
+  Brain,
+  Check,
+  ChevronDown,
+  FileSearch,
+  FileText,
+  FolderOpen,
+  Globe2,
+  LoaderCircle,
+  Monitor,
+  ShieldCheck,
+  Sparkles,
+  Terminal,
+  UserRound,
+  X,
+  type LucideIcon
+} from 'lucide-react'
+import { useState } from 'react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { agentStatusLabel, agentToolLabel } from '@/lib/agent'
 
 type AgentReplyViewProps = {
@@ -15,21 +34,26 @@ type AgentReplyViewProps = {
   onDeny?: () => void
 }
 
-function splitWords(text: string): string[] {
-  const trimmed = text.trim()
-  return trimmed ? trimmed.split(/\s+/) : []
-}
-
-function ReplyWord({ word, delayIndex }: { word: string; delayIndex: number }): React.JSX.Element {
-  const [delay] = useState(delayIndex)
-  return (
-    <span
-      className="transcript-word transcript-word-enter"
-      style={{ '--word-index': delay } as React.CSSProperties}
-    >
-      {word}
-    </span>
-  )
+const TOOL_ICON: Record<string, LucideIcon> = {
+  remember: Brain,
+  recall: Brain,
+  search_chats: FileSearch,
+  read_chat: FileText,
+  update_user_profile: UserRound,
+  end_conversation: Check,
+  read_file: FileText,
+  write_file: FileText,
+  list_directory: FolderOpen,
+  search_files: FileSearch,
+  search_in_files: FileSearch,
+  open_app: AppWindow,
+  run_command: Terminal,
+  look_at_screen: Monitor,
+  fetch_webpage: Globe2,
+  search_web: Globe2,
+  edit_personal_context: UserRound,
+  load_skill: Sparkles,
+  read_skill_resource: FileText
 }
 
 function ApprovalCard({
@@ -92,38 +116,41 @@ function ApprovalCard({
   )
 }
 
-function AnimatedReply({
-  turnId,
-  words,
-  phase,
-  dimmed
-}: {
-  turnId: string
-  words: string[]
-  phase: string
-  dimmed: boolean
-}): React.JSX.Element {
-  const previous = useRef({ turnId, count: 0 })
-  const enterFrom = previous.current.turnId === turnId ? previous.current.count : 0
-
-  useEffect(() => {
-    previous.current = { turnId, count: words.length }
-  }, [turnId, words.length])
+function ToolActivity({ toolName }: { toolName: string | null }): React.JSX.Element {
+  const ToolIcon = (toolName && TOOL_ICON[toolName]) || Sparkles
 
   return (
-    <p
-      className="transcript agent-reply"
-      data-final={phase === 'idle' || phase === 'error' ? 'true' : 'false'}
+    <section className="tool-activity" role="status" aria-live="polite">
+      <span className="tool-activity-icon" aria-hidden="true">
+        <ToolIcon />
+      </span>
+      <div className="tool-activity-body">
+        <div className="tool-activity-heading">
+          <Badge variant="secondary">{agentToolLabel(toolName)}</Badge>
+          <span className="tool-activity-live">
+            <LoaderCircle className="tool-activity-spinner" aria-hidden="true" />
+            در حال انجام
+          </span>
+        </div>
+        <p className="tool-activity-status">{agentStatusLabel('tool', toolName)}</p>
+        <span className="tool-activity-progress" aria-hidden="true">
+          <span />
+        </span>
+      </div>
+    </section>
+  )
+}
+
+function StreamingReply({ text, dimmed }: { text: string; dimmed: boolean }): React.JSX.Element {
+  return (
+    <ScrollArea
+      className="agent-reply-window"
       data-followup={dimmed ? 'true' : 'false'}
+      role="region"
+      aria-label="پاسخ میکی"
     >
-      {words.map((word, index) => (
-        <ReplyWord
-          key={`${turnId}-${index}`}
-          word={word}
-          delayIndex={Math.max(0, index - enterFrom)}
-        />
-      ))}
-    </p>
+      <p className="agent-reply-text">{text}</p>
+    </ScrollArea>
   )
 }
 
@@ -151,19 +178,10 @@ export function AgentReplyView({
   }
 
   if (phase === 'tool') {
-    return (
-      <section className="tool-activity" role="status" aria-live="polite">
-        <LoaderCircle className="tool-activity-spinner" aria-hidden="true" />
-        <div className="min-w-0 text-start">
-          <p className="tool-activity-name">{agentToolLabel(toolName)}</p>
-          <p className="tool-activity-status">{agentStatusLabel(phase, toolName)}</p>
-        </div>
-      </section>
-    )
+    return <ToolActivity toolName={toolName} />
   }
 
-  const words = splitWords(text)
-  if (words.length === 0) {
+  if (!text.trim()) {
     return (
       <span className="transcript-placeholder text-muted-foreground">
         {agentStatusLabel(phase, toolName)}
@@ -171,5 +189,5 @@ export function AgentReplyView({
     )
   }
 
-  return <AnimatedReply turnId={turnId} words={words} phase={phase} dimmed={dimmed} />
+  return <StreamingReply text={text} dimmed={dimmed} />
 }

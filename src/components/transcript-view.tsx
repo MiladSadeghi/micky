@@ -1,14 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { transcriptWindow } from '@/lib/transcript-window'
 
 type TranscriptViewProps = {
   sessionId: string
   text: string
   isFinal: boolean
-}
-
-function splitWords(text: string): string[] {
-  const trimmed = text.trim()
-  return trimmed ? trimmed.split(/\s+/) : []
 }
 
 function TranscriptWord({
@@ -34,30 +30,39 @@ export function TranscriptView({
   text,
   isFinal
 }: TranscriptViewProps): React.JSX.Element {
-  const words = splitWords(text)
-  const [meta, setMeta] = useState({ sessionId, count: 0 })
+  const window = transcriptWindow(text)
+  const previous = useRef({ sessionId, count: 0 })
+  const enterFrom = previous.current.sessionId === sessionId ? previous.current.count : 0
 
-  let enterFrom = meta.count
-  if (meta.sessionId !== sessionId) {
-    enterFrom = 0
-    setMeta({ sessionId, count: words.length })
-  } else if (meta.count !== words.length) {
-    setMeta({ sessionId, count: words.length })
-  }
+  useEffect(() => {
+    previous.current = { sessionId, count: window.totalWords }
+  }, [sessionId, window.totalWords])
 
-  if (words.length === 0) {
+  if (window.totalWords === 0) {
     return <span className="transcript-placeholder">…</span>
   }
 
   return (
-    <p className="transcript" data-final={isFinal ? 'true' : 'false'}>
-      {words.map((word, index) => (
-        <TranscriptWord
-          key={`${sessionId}-${index}`}
-          word={word}
-          delayIndex={Math.max(0, index - enterFrom)}
-        />
-      ))}
+    <p
+      className="transcript transcript-window"
+      data-final={isFinal ? 'true' : 'false'}
+      data-truncated={window.truncated ? 'true' : 'false'}
+    >
+      {window.truncated ? (
+        <span className="transcript-window-ellipsis" aria-hidden="true">
+          …
+        </span>
+      ) : null}
+      {window.words.map((word, index) => {
+        const absoluteIndex = window.startIndex + index
+        return (
+          <TranscriptWord
+            key={`${sessionId}-${absoluteIndex}`}
+            word={word}
+            delayIndex={Math.max(0, absoluteIndex - enterFrom)}
+          />
+        )
+      })}
     </p>
   )
 }

@@ -1,6 +1,7 @@
 import {
   Boxes,
   Check,
+  ChevronDown,
   Cloud,
   ExternalLink,
   MonitorCog,
@@ -12,8 +13,10 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
+  DEFAULT_LLM_TEMPERATURE,
   LLM_PROVIDER_OPTIONS,
   isLlmProviderId,
+  isLlmReasoningEffort,
   isOpenAiCompatibleProviderId,
   type LlmModelInfo,
   type LlmProviderId,
@@ -33,6 +36,7 @@ import {
 } from '@/components/ui/card'
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Slider } from '@/components/ui/slider'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 type LlmSettingsProps = {
@@ -55,6 +59,8 @@ export function LlmSettings({ snapshot, compact = false }: LlmSettingsProps): Re
   const [baseUrl, setBaseUrl] = useState(snapshot?.baseUrl ?? '')
   const [modelId, setModelId] = useState('')
   const [showManualModel, setShowManualModel] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [temperature, setTemperature] = useState(snapshot?.temperature ?? DEFAULT_LLM_TEMPERATURE)
   const [busy, setBusy] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -65,6 +71,10 @@ export function LlmSettings({ snapshot, compact = false }: LlmSettingsProps): Re
     setShowManualModel(false)
     setSaveError(null)
   }, [providerId, snapshot?.baseUrl])
+
+  useEffect(() => {
+    setTemperature(snapshot?.temperature ?? DEFAULT_LLM_TEMPERATURE)
+  }, [snapshot?.temperature])
 
   const run = async (action: () => Promise<LlmSnapshot>): Promise<void> => {
     setBusy(true)
@@ -298,10 +308,7 @@ export function LlmSettings({ snapshot, compact = false }: LlmSettingsProps): Re
         </CardFooter>
       </Card>
 
-      <Card
-        size="sm"
-        className={cn('min-h-0 bg-card/30', compact ? 'flex-1' : undefined)}
-      >
+      <Card size="sm" className={cn('min-h-0 bg-card/30', compact ? 'flex-1' : undefined)}>
         <CardHeader>
           <CardTitle>مدل</CardTitle>
           <CardDescription className="text-[0.68rem]">
@@ -373,6 +380,100 @@ export function LlmSettings({ snapshot, compact = false }: LlmSettingsProps): Re
             )}
           </div>
         </CardContent>
+      </Card>
+
+      <Card size="sm" className="shrink-0 bg-card/30">
+        <CardHeader>
+          <CardTitle>تنظیمات پیشرفته</CardTitle>
+          <CardDescription className="text-[0.68rem]">
+            کنترل رفتار و میزان پردازش مدل
+          </CardDescription>
+          <CardAction>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={advancedOpen ? 'بستن تنظیمات پیشرفته' : 'باز کردن تنظیمات پیشرفته'}
+              aria-expanded={advancedOpen}
+              aria-controls="llm-advanced-settings"
+              onClick={() => setAdvancedOpen((open) => !open)}
+            >
+              <ChevronDown
+                className={cn('transition-transform', advancedOpen ? 'rotate-180' : undefined)}
+              />
+            </Button>
+          </CardAction>
+        </CardHeader>
+        {advancedOpen ? (
+          <CardContent id="llm-advanced-settings">
+            <FieldGroup className="gap-4">
+              <Field data-disabled={busy || !snapshot ? true : undefined}>
+                <div className="flex items-center justify-between gap-2">
+                  <FieldLabel id="llm-temperature-label">دما</FieldLabel>
+                  <Badge variant="outline" dir="ltr">
+                    {temperature.toFixed(1)}
+                  </Badge>
+                </div>
+                <Slider
+                  aria-labelledby="llm-temperature-label"
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  value={[temperature]}
+                  disabled={busy || !snapshot}
+                  onValueChange={(value) => setTemperature(value[0] ?? DEFAULT_LLM_TEMPERATURE)}
+                  onValueCommitted={(value) => {
+                    const nextTemperature = value[0]
+                    if (nextTemperature != null && nextTemperature !== snapshot?.temperature) {
+                      void run(() => window.api.llm.setTemperature(nextTemperature))
+                    }
+                  }}
+                />
+                <FieldDescription className="text-[0.65rem]">
+                  مقدار کمتر پاسخ‌های ثابت‌تر و مقدار بیشتر پاسخ‌های متنوع‌تری می‌دهد.
+                </FieldDescription>
+              </Field>
+
+              {snapshot?.supportsReasoning ? (
+                <Field>
+                  <FieldLabel id="llm-reasoning-label">میزان استدلال</FieldLabel>
+                  <ToggleGroup
+                    value={[snapshot.reasoningEffort]}
+                    multiple={false}
+                    variant="outline"
+                    size="sm"
+                    spacing={1}
+                    className="grid w-full grid-cols-5"
+                    aria-labelledby="llm-reasoning-label"
+                    disabled={busy}
+                    onValueChange={(value) => {
+                      const effort = value.at(-1)
+                      if (isLlmReasoningEffort(effort) && effort !== snapshot.reasoningEffort) {
+                        void run(() => window.api.llm.setReasoningEffort(effort))
+                      }
+                    }}
+                  >
+                    <ToggleGroupItem value="default">خودکار</ToggleGroupItem>
+                    <ToggleGroupItem value="none">خاموش</ToggleGroupItem>
+                    <ToggleGroupItem value="low">کم</ToggleGroupItem>
+                    <ToggleGroupItem value="medium">متوسط</ToggleGroupItem>
+                    <ToggleGroupItem value="high">زیاد</ToggleGroupItem>
+                  </ToggleGroup>
+                  <FieldDescription className="text-[0.65rem]">
+                    می‌توانی استدلال را خاموش کنی؛ استدلال بیشتر معمولاً دقیق‌تر، کندتر و پرهزینه‌تر
+                    است.
+                  </FieldDescription>
+                </Field>
+              ) : (
+                <Field>
+                  <FieldLabel>میزان استدلال</FieldLabel>
+                  <FieldDescription className="text-[0.65rem]">
+                    مدل انتخاب‌شده پشتیبانی از تنظیم میزان استدلال را گزارش نکرده است.
+                  </FieldDescription>
+                </Field>
+              )}
+            </FieldGroup>
+          </CardContent>
+        ) : null}
       </Card>
     </div>
   )

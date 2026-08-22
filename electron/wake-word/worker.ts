@@ -11,10 +11,11 @@ type WorkerResources = {
 type WorkerRequest =
   | { type: 'initialize'; resources: WorkerResources; threshold: number }
   | { type: 'audio'; samples: ArrayBuffer }
-  | { type: 'reset' }
+  | { type: 'reset'; id?: number }
 
 type WorkerResponse =
   | { type: 'ready' }
+  | { type: 'reset'; id: number }
   | { type: 'score'; score: number }
   | { type: 'detected'; score: number }
   | { type: 'error'; error: string }
@@ -126,6 +127,7 @@ async function handle(message: WorkerRequest): Promise<void> {
   }
   if (message.type === 'reset') {
     rollingAudio.reset()
+    if (message.id !== undefined) post({ type: 'reset', id: message.id })
     return
   }
 

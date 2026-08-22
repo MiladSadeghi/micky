@@ -41,7 +41,6 @@ const TOOL_STATUS_LABEL: Record<string, string> = {
   search_chats: 'دارم گفتگوهای قبلی رو می‌گردم…',
   read_chat: 'دارم گفتگوی قبلی رو مرور می‌کنم…',
   update_user_profile: 'دارم پروفایلت رو عوض می‌کنم…',
-  get_current_datetime: 'دارم نگاه می‌کنم ساعت چنده…',
   end_conversation: 'دارم گفتگو رو می‌بندم…',
   read_file: 'دارم فایل رو می‌خونم…',
   write_file: 'دارم فایل رو آماده می‌کنم…',
@@ -52,6 +51,7 @@ const TOOL_STATUS_LABEL: Record<string, string> = {
   run_command: 'دارم یه دستور اجرا می‌کنم…',
   look_at_screen: 'دارم صفحه رو نگاه می‌کنم…',
   fetch_webpage: 'دارم صفحهٔ وب رو می‌خونم…',
+  search_web: 'دارم وب رو می‌گردم…',
   edit_personal_context: 'دارم تنظیمات شخصی رو آماده می‌کنم…',
   load_skill: 'دارم مهارت مناسب رو آماده می‌کنم…',
   read_skill_resource: 'دارم راهنمای مهارت رو می‌خونم…'
@@ -63,7 +63,6 @@ const TOOL_NAME_LABEL: Record<string, string> = {
   search_chats: 'جستجوی گفتگوها',
   read_chat: 'مرور گفتگو',
   update_user_profile: 'پروفایل',
-  get_current_datetime: 'زمان و تاریخ',
   end_conversation: 'گفتگو',
   read_file: 'خواندن فایل',
   write_file: 'نوشتن فایل',
@@ -74,6 +73,7 @@ const TOOL_NAME_LABEL: Record<string, string> = {
   run_command: 'اجرای دستور',
   look_at_screen: 'دیدن صفحه',
   fetch_webpage: 'خواندن وب',
+  search_web: 'جستجوی وب',
   edit_personal_context: 'تنظیمات شخصی',
   load_skill: 'بارگذاری مهارت',
   read_skill_resource: 'راهنمای مهارت'

@@ -112,7 +112,7 @@ export const GEMINI_TTS_VOICES: TtsVoice[] = [
 ].map(([id, description]) => ({ id, label: id, description }))
 
 export const DEFAULT_TTS_SETTINGS: TtsSettings = {
-  enabled: true,
+  enabled: false,
   providerId: 'gemini',
   geminiVoice: 'Sulafat',
   elevenLabsVoiceId: ''

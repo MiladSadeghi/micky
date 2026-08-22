@@ -89,7 +89,7 @@ export class ConversationController {
     }
 
     if (this.#mode === 'followup') {
-      if (!trimmed) {
+      if (!hasSpokenText(trimmed)) {
         void this.#keepFollowupListening()
         return
       }
@@ -101,7 +101,7 @@ export class ConversationController {
 
     if (this.#mode === 'agent') return
 
-    if (!trimmed || !this.#canRunAgent()) {
+    if (!hasSpokenText(trimmed) || !this.#canRunAgent()) {
       this.#setStatus({ mode: 'idle', followupUntil: null, followupHeard: false })
       return
     }
@@ -238,8 +238,15 @@ export class ConversationController {
     this.#clearFollowupTimer()
     this.#followupDeadline = null
     const generation = ++this.#generation
+    const usesMainSurface = this.#shouldUseVoice()
+    const speechEnabled =
+      usesMainSurface && this.options.getTts()?.getSnapshot().configured === true
     this.#setStatus({ mode: 'agent', followupUntil: null, followupHeard: false })
-    const result = await agent.respond(text)
+    const result = await agent.respond(text, {
+      responseSurface: usesMainSurface ? 'main' : 'flyover',
+      speechEnabled,
+      ...(chatId ? { sessionId: chatId } : {})
+    })
     if (generation !== this.#generation) return
     if (result === 'aborted') return
     if (result !== 'completed' && result !== 'ended') {
@@ -267,7 +274,7 @@ export class ConversationController {
         console.warn('[chats] Could not persist the assistant turn.', error)
       }
     }
-    if (reply.trim() && this.#shouldUseVoice()) await this.options.getTts()?.speak(reply)
+    if (reply.trim() && speechEnabled) await this.options.getTts()?.speak(reply)
     if (generation !== this.#generation) return
     if (result === 'ended') {
       try {

@@ -5,9 +5,12 @@ export type SoulFileId = 'soul' | 'user' | 'memory'
 export type AddressForm = 'to' | 'shoma'
 export type LanguageMix = 'persian' | 'mixed'
 export type ReplyLength = 'short' | 'medium'
+export type PersonalityProfile = 'balanced' | 'direct' | 'thoughtful' | 'playful'
 
 export type UserProfileDraft = {
   name: string
+  about: string
+  personalityProfile: PersonalityProfile
   addressForm: AddressForm
   languageMix: LanguageMix
   city: string
@@ -39,6 +42,8 @@ export const SOUL_FILE_NAMES: Record<SoulFileId, string> = {
 
 export const EMPTY_USER_PROFILE: UserProfileDraft = {
   name: '',
+  about: '',
+  personalityProfile: 'balanced',
   addressForm: 'to',
   languageMix: 'mixed',
   city: '',
@@ -65,8 +70,11 @@ export function parseUserProfileDraft(markdown: string): UserProfileDraft {
   const addressForm = read('Address form', 'خطاب')
   const languageMix = read('Language', 'زبان')
   const replyLength = read('Reply length', 'طول پاسخ')
+  const personalityProfile = read('Personality profile', 'سبک شخصیت')
   return {
     name: read('Name', 'نام'),
+    about: read('About', 'درباره'),
+    personalityProfile: parsePersonalityProfile(personalityProfile),
     addressForm: /formal|shoma|شما/i.test(addressForm) ? 'shoma' : 'to',
     languageMix: /persian only|^persian$|فقط فارسی/i.test(languageMix) ? 'persian' : 'mixed',
     city: read('City', 'شهر'),
@@ -74,6 +82,13 @@ export function parseUserProfileDraft(markdown: string): UserProfileDraft {
     focus: read('Current focus', 'تمرکز'),
     replyLength: /medium|more detailed|مفصل|متوسط/i.test(replyLength) ? 'medium' : 'short'
   }
+}
+
+function parsePersonalityProfile(value: string): PersonalityProfile {
+  if (/direct|عمل.?گرا|رک/i.test(value)) return 'direct'
+  if (/thoughtful|thinking|کنجکاو|متفکر/i.test(value)) return 'thoughtful'
+  if (/playful|شوخ|بازیگوش/i.test(value)) return 'playful'
+  return 'balanced'
 }
 
 export function parseMarkdownDocument(

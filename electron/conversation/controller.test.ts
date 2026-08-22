@@ -6,7 +6,14 @@ import { ConversationController } from './controller'
 type Harness = ReturnType<typeof createHarness>
 
 function createHarness(
-  respond: () => Promise<'completed' | 'ended' | 'aborted' | 'skipped'> = async () => 'completed',
+  respond: (
+    text: string,
+    options?: {
+      responseSurface?: 'main' | 'flyover'
+      speechEnabled?: boolean
+      sessionId?: string
+    }
+  ) => Promise<'completed' | 'ended' | 'aborted' | 'skipped'> = async () => 'completed',
   shouldUseVoice: () => boolean = () => true,
   chats: Record<string, unknown> | null = null
 ) {
@@ -60,6 +67,9 @@ function createHarness(
     async speak(text: string): Promise<'completed' | 'aborted'> {
       this.spoken.push(text)
       return 'completed' as const
+    },
+    getSnapshot() {
+      return { configured: true }
     },
     stop() {
       this.stopped += 1
@@ -188,6 +198,35 @@ test('does not treat a blip as speech during followup', async (t) => {
   assert.equal(harness.controller.getStatus().mode, 'idle')
 })
 
+test('does not send punctuation or one-character ASR fragments to the agent', async () => {
+  const received: string[] = []
+  const harness = createHarness(async (text) => {
+    received.push(text)
+    return 'completed'
+  })
+
+  harness.controller.onFinalTranscript('...')
+  harness.controller.onFinalTranscript('ا.')
+  harness.controller.onFinalTranscript('\ufffd')
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(received, [])
+  assert.equal(harness.controller.getStatus().mode, 'idle')
+})
+
+test('keeps short meaningful ASR commands', async () => {
+  const received: string[] = []
+  const harness = createHarness(async (text) => {
+    received.push(text)
+    return 'completed'
+  })
+
+  harness.controller.onFinalTranscript('نه')
+  await waitForFollowup(harness)
+
+  assert.deepEqual(received, ['نه'])
+})
+
 test('starts a fresh conversation and returns to wake-word listening', async () => {
   const harness = createHarness()
   harness.controller.onFinalTranscript('سلام')
@@ -282,8 +321,14 @@ test('waits for spoken playback before opening followup listening', async () => 
 })
 
 test('skips spoken playback for a visual-only shortcut session', async () => {
+  let responseOptions:
+    | { responseSurface?: 'main' | 'flyover'; speechEnabled?: boolean; sessionId?: string }
+    | undefined
   const harness = createHarness(
-    async () => 'completed',
+    async (_text, options) => {
+      responseOptions = options
+      return 'completed'
+    },
     () => false
   )
   harness.controller.onFinalTranscript('سلام')
@@ -291,6 +336,53 @@ test('skips spoken playback for a visual-only shortcut session', async () => {
 
   assert.deepEqual(harness.tts.spoken, [])
   assert.equal(harness.speech.started, 1)
+  assert.deepEqual(responseOptions, { responseSurface: 'flyover', speechEnabled: false })
+})
+
+test('uses spoken main-window instructions and the chat id as the provider cache session', async () => {
+  let responseOptions:
+    | { responseSurface?: 'main' | 'flyover'; speechEnabled?: boolean; sessionId?: string }
+    | undefined
+  const chats = {
+    ensureActiveChat: () => ({ chatId: 'chat-1', created: true }),
+    getContext: () => [],
+    appendMessage: () => {},
+    endActiveChat: () => {}
+  }
+  const harness = createHarness(
+    async (_text, options) => {
+      responseOptions = options
+      return 'completed'
+    },
+    () => true,
+    chats
+  )
+
+  harness.controller.onFinalTranscript('سلام')
+  await waitForFollowup(harness)
+
+  assert.deepEqual(responseOptions, {
+    responseSurface: 'main',
+    speechEnabled: true,
+    sessionId: 'chat-1'
+  })
+})
+
+test('uses written main-window instructions when speech playback is disabled', async () => {
+  let responseOptions:
+    | { responseSurface?: 'main' | 'flyover'; speechEnabled?: boolean; sessionId?: string }
+    | undefined
+  const harness = createHarness(async (_text, options) => {
+    responseOptions = options
+    return 'completed'
+  })
+  harness.tts.getSnapshot = () => ({ configured: false })
+
+  harness.controller.onFinalTranscript('سلام')
+  await waitForFollowup(harness)
+
+  assert.deepEqual(responseOptions, { responseSurface: 'main', speechEnabled: false })
+  assert.deepEqual(harness.tts.spoken, [])
 })
 
 test('interrupting a turn stops TTS playback', async () => {

@@ -5,9 +5,13 @@ import {
   Database,
   Download,
   Ear,
+  ExternalLink,
+  Globe2,
   Keyboard,
   MicOff,
   MousePointer2,
+  Puzzle,
+  Sparkles,
   Volume2,
   X,
   type LucideIcon
@@ -17,8 +21,8 @@ import type { AsrModelView, ModelsSnapshot } from '@/lib/asr'
 import {
   EMPTY_USER_PROFILE,
   parseUserProfileDraft,
-  type AddressForm,
   type LanguageMix,
+  type PersonalityProfile,
   type ReplyLength,
   type UserProfileDraft
 } from '@/lib/soul'
@@ -28,7 +32,11 @@ import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { LlmSettings } from '@/components/llm-settings'
 import { MickyLogo } from '@/components/micky-logo'
 import { ShenavaModelHelp } from '@/components/shenava-model-help'
+import { AudioDeviceSettings } from '@/components/audio-device-settings'
 import { useLlm } from '@/hooks/use-llm'
+import { useAudioDevices } from '@/hooks/use-audio-devices'
+import { useSkills } from '@/hooks/use-skills'
+import { useWebSearch } from '@/hooks/use-web-search'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
@@ -38,24 +46,40 @@ import {
 import { shortcutDisplayKeys } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 
-type Step = 0 | 1 | 2 | 3 | 4 | 5
+type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
-const SETUP_STEPS = 5
+const SETUP_STEPS = 6
+
+const PERSONALITY_PROFILES: Array<{
+  id: PersonalityProfile
+  label: string
+  description: string
+}> = [
+  { id: 'balanced', label: 'متعادل', description: 'گرم، روشن و عمل‌گرا' },
+  { id: 'direct', label: 'رک و مستقیم', description: 'سریع، قاطع و بدون حاشیه' },
+  { id: 'thoughtful', label: 'هم‌فکر کنجکاو', description: 'فکری، پرسشگر و اهل کشف' },
+  { id: 'playful', label: 'شوخ و پرانرژی', description: 'سبک، بامزه و سرزنده' }
+]
 
 type OnboardingViewProps = {
   models: ModelsSnapshot | null
   ttsSnapshot: TtsSnapshot | null
   existingUserMarkdown: string
   settings: SettingsSnapshot | null
+  onFinished: (name: string) => void
 }
 
 export function OnboardingView({
   models,
   ttsSnapshot,
   existingUserMarkdown,
-  settings
+  settings,
+  onFinished
 }: OnboardingViewProps): React.JSX.Element {
   const llm = useLlm()
+  const audioDevices = useAudioDevices()
+  const skills = useSkills()
+  const webSearch = useWebSearch()
   const [step, setStep] = useState<Step>(0)
   const [draft, setDraft] = useState<UserProfileDraft>(() =>
     existingUserMarkdown ? parseUserProfileDraft(existingUserMarkdown) : { ...EMPTY_USER_PROFILE }
@@ -68,24 +92,23 @@ export function OnboardingView({
   }
 
   const finish = async (): Promise<void> => {
+    if (!installedModel) {
+      setStep(3)
+      setError('برای شروع، اول یک مدل شنیدن دانلود کن.')
+      return
+    }
+    if (!llmReady) {
+      setStep(4)
+      setError('برای شروع، یک مدل هوش مصنوعی را کامل وصل و انتخاب کن.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
       await window.api.soul.completeOnboarding(draft)
+      onFinished(draft.name.trim())
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'راه‌اندازی ذخیره نشد. دوباره تلاش کن.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const skip = async (): Promise<void> => {
-    setBusy(true)
-    setError(null)
-    try {
-      await window.api.soul.dismissOnboarding()
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'فعلاً نمی‌شه از راه‌اندازی خارج شد.')
     } finally {
       setBusy(false)
     }
@@ -94,6 +117,16 @@ export function OnboardingView({
   const installedModel = models?.models.some((model) => model.state === 'installed') ?? false
   const llmReady = llm?.configured === true && !llm.error
   const ttsReady = ttsSnapshot?.enabled !== false && ttsSnapshot?.configured === true
+  const canContinue = (step !== 3 || installedModel) && (step !== 4 || llmReady)
+
+  const runOptionalSetup = async (action: () => Promise<unknown>): Promise<void> => {
+    setError(null)
+    try {
+      await action()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'این تنظیم ذخیره نشد. دوباره تلاش کن.')
+    }
+  }
 
   return (
     <main className="voice-shell flex h-full min-h-0 flex-col overflow-hidden">
@@ -136,14 +169,14 @@ export function OnboardingView({
               />
               <BuildingBlock
                 icon={BrainCircuit}
-                title="مدل زبانی"
+                title="مغز (مدل AI)"
                 description="منظورت رو می‌فهمم و جواب رو آماده می‌کنم"
                 status={llmReady ? 'آماده' : 'آماده نیست'}
                 ready={llmReady}
               />
               <BuildingBlock
                 icon={Volume2}
-                title="پاسخ صوتی"
+                title="حرف‌زدن"
                 description="اگه بخوای، جوابم رو با صدا برات می‌خونم"
                 status={ttsReady ? 'آماده' : 'اختیاری'}
                 ready={ttsReady}
@@ -157,13 +190,24 @@ export function OnboardingView({
               />
             </div>
             <p className="rounded-lg bg-foreground/5 px-3 py-2 text-[0.68rem] leading-5 text-muted-foreground">
-              حالا فقط مدل شنیدن و مدل زبانی رو آماده می‌کنیم. صدا اختیاریه و هر وقت بخوای می‌تونی
-              روشنش کنی.
+              حالا فقط شنیدن و مغزم رو آماده می‌کنیم. حرف‌زدن اختیاریه و هر وقت بخوای می‌تونی روشنش
+              کنی.
             </p>
           </StepBody>
         ) : null}
 
         {step === 2 ? (
+          <StepBody
+            eyebrow="بگو از کجا بشنوم"
+            title="دستگاه‌های صدا رو انتخاب کن"
+            description="میکروفنی که باهاش حرف می‌زنی و خروجی‌ای که صدای من رو ازش می‌شنوی انتخاب کن. اگه مطمئن نیستی، پیش‌فرض سیستم خوبه."
+            topAligned
+          >
+            <AudioDeviceSettings settings={settings} devices={audioDevices} compact />
+          </StepBody>
+        ) : null}
+
+        {step === 3 ? (
           <StepBody
             eyebrow="اول گوش‌هام رو آماده کنیم"
             title="مدل شنیدن رو انتخاب کن"
@@ -188,12 +232,12 @@ export function OnboardingView({
           </StepBody>
         ) : null}
 
-        {step === 3 ? (
+        {step === 4 ? (
           <div className="flex min-h-0 flex-1 flex-col gap-2.5 text-start">
             <StepHeading
-              eyebrow="حالا مدل زبانی رو انتخاب کن"
-              title="با کدوم مدل جواب بدم؟"
-              description="مدل زبانی درخواستت رو می‌فهمه و جواب رو می‌سازه. یه مدل ابری یا محلی انتخاب کن؛ بعداً هم هر وقت بخوای می‌تونی عوضش کنی."
+              eyebrow="حالا مغزم رو انتخاب کن"
+              title="با کدوم هوش مصنوعی فکر کنم؟"
+              description="این مدل درخواستت رو می‌فهمه و جواب رو می‌سازه. یه مدل ابری یا محلی انتخاب کن؛ بعداً هم هر وقت بخوای می‌تونی عوضش کنی."
             />
             <div className="flex min-h-0 flex-1 flex-col">
               <LlmSettings snapshot={llm} compact />
@@ -201,33 +245,47 @@ export function OnboardingView({
           </div>
         ) : null}
 
-        {step === 4 ? (
+        {step === 5 ? (
           <StepBody
             eyebrow="آخرین مرحله"
-            title="دوست داری چطور باهات حرف بزنم؟"
-            description="لازم نیست اسمت رو بگی. فقط بگو «تو» بگم یا «شما» و جواب‌هام چه شکلی باشن."
+            title="شخصیت، ابزارها و مهارت‌ها"
+            description="لحن من رو برای خودت تنظیم کن و ببین چطور قابلیت‌های بیشتری بهم می‌دی. همه‌شون بعداً هم از تنظیمات قابل تغییرن."
+            topAligned
           >
-            <Field label="اسمت، اگه دوست داری">
-              <TextField
-                value={draft.name}
-                placeholder="مثلاً مانی"
-                autoFocus
-                onChange={(name) => patch({ name })}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="تو یا شما؟">
-                <Choice
-                  options={[
-                    { id: 'to', label: 'تو' },
-                    { id: 'shoma', label: 'شما' }
-                  ]}
-                  value={draft.addressForm}
-                  onSelect={(addressForm: AddressForm) => patch({ addressForm })}
+            <CapabilityGuide
+              icon={Sparkles}
+              title="شخصیت و آشنایی"
+              status="همین‌جا تنظیمش کن"
+              description="اسم و سبک جواب‌هام رو انتخاب کن؛ با گفت‌وگوهای بعدی هم کم‌کم بهتر می‌شناسمت."
+            >
+              <Field label="اسمت، اگه دوست داری">
+                <TextField
+                  value={draft.name}
+                  placeholder="مثلاً مانی"
+                  autoFocus
+                  onChange={(name) => patch({ name })}
                 />
               </Field>
-              <Field label="جواب‌هام چقدر بلند باشن؟">
+              <Field label="چیزی هست که بهتره درباره‌ت بدونم؟">
+                <TextAreaField
+                  value={draft.about}
+                  placeholder="مثلاً روی چه چیزی کار می‌کنی، چه چیزهایی برات مهمه، یا دوست داری چطور کمکت کنم…"
+                  onChange={(about) => patch({ about })}
+                />
+              </Field>
+              <Field label="دوست داری چه شخصیتی داشته باشم؟">
                 <Choice
+                  horizontal
+                  options={PERSONALITY_PROFILES}
+                  value={draft.personalityProfile}
+                  onSelect={(personalityProfile: PersonalityProfile) =>
+                    patch({ personalityProfile })
+                  }
+                />
+              </Field>
+              <Field label="اندازهٔ جواب‌ها">
+                <Choice
+                  horizontal
                   options={[
                     { id: 'short', label: 'کوتاه و مستقیم' },
                     { id: 'medium', label: 'با یه کم توضیح' }
@@ -236,22 +294,57 @@ export function OnboardingView({
                   onSelect={(replyLength: ReplyLength) => patch({ replyLength })}
                 />
               </Field>
-            </div>
-            <Field label="زبان جواب‌هام">
-              <Choice
-                horizontal
-                options={[
-                  { id: 'mixed', label: 'فارسی، با کلمه‌های انگلیسی هرجا لازم شد' },
-                  { id: 'persian', label: 'فقط فارسی' }
-                ]}
-                value={draft.languageMix}
-                onSelect={(languageMix: LanguageMix) => patch({ languageMix })}
-              />
-            </Field>
+              <Field label="زبان جواب‌هام">
+                <Choice
+                  horizontal
+                  options={[
+                    { id: 'mixed', label: 'فارسی، با واژه‌های انگلیسی لازم' },
+                    { id: 'persian', label: 'فقط فارسی' }
+                  ]}
+                  value={draft.languageMix}
+                  onSelect={(languageMix: LanguageMix) => patch({ languageMix })}
+                />
+              </Field>
+            </CapabilityGuide>
+
+            <CapabilityGuide
+              icon={Globe2}
+              title="جستجوی وب و ابزارها"
+              status={webSearch?.toolAvailable ? 'جستجوی وب آماده' : 'اختیاری'}
+              description="برای سؤال‌های تازه وب رو می‌گردم. ابزارهای دستگاه هم فقط با اجازهٔ تو کار می‌کنن و کارهای حساس تأیید می‌خوان."
+              guide="راه ساده: Google محلی کلید نمی‌خواد. برای نتیجه‌های پایدارتر می‌تونی بعداً در تنظیمات کلید Exa یا Firecrawl اضافه کنی."
+              action={
+                webSearch?.toolAvailable
+                  ? undefined
+                  : {
+                      label: 'روشن‌کردن جستجوی ساده',
+                      onClick: () =>
+                        void runOptionalSetup(() =>
+                          window.api.webSearch.setProviderEnabled('google', true)
+                        )
+                    }
+              }
+            />
+
+            <CapabilityGuide
+              icon={Puzzle}
+              title="مهارت‌ها"
+              status={
+                skills?.skills.length
+                  ? `${skills.skills.length.toLocaleString('fa-IR')} مهارت پیدا شد`
+                  : 'قابل اضافه‌شدن'
+              }
+              description="مهارت‌ها راهنمای انجام کارهای تخصصی‌ان؛ فقط وقتی لازم باشن خونده می‌شن و ظاهر میکی رو شلوغ نمی‌کنن."
+              guide="از skills.sh یک مهارت Universal نصب کن؛ میکی پوشه‌های استاندارد رو پیدا می‌کنه و مهارت تازه رو از تنظیمات فعال می‌کنی."
+              action={{
+                label: 'دیدن skills.sh',
+                onClick: () => void window.api.skills.openCatalog()
+              }}
+            />
           </StepBody>
         ) : null}
 
-        {step === 5 ? (
+        {step === 6 ? (
           <ReadyStep
             name={draft.name}
             assistantShortcut={settings?.assistantShortcut ?? DEFAULT_ASSISTANT_SHORTCUT}
@@ -262,15 +355,13 @@ export function OnboardingView({
       </section>
 
       <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-border/40 px-5 pt-3 pb-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
-          disabled={busy}
-          onClick={() => void skip()}
-        >
-          بعداً تنظیمش می‌کنم
-        </Button>
+        <p className="max-w-40 text-[0.62rem] leading-4 text-muted-foreground">
+          {step === 3 && !installedModel
+            ? 'برای ادامه، دانلود مدل شنیدن لازمه.'
+            : step === 4 && !llmReady
+              ? 'وقتی اتصال و مدل آماده بشن می‌تونی ادامه بدی.'
+              : 'بعداً هم از تنظیمات می‌تونی همه‌چیز رو عوض کنی.'}
+        </p>
         <div className="flex items-center gap-1.5">
           {step > 0 ? (
             <Button
@@ -282,12 +373,23 @@ export function OnboardingView({
               قبلی
             </Button>
           ) : null}
-          {step > 0 && step < 5 ? (
-            <Button size="sm" onClick={() => setStep((step + 1) as Step)}>
+          {step > 0 && step < 6 ? (
+            <Button
+              size="sm"
+              disabled={busy || !canContinue}
+              onClick={() => {
+                setError(null)
+                setStep((step + 1) as Step)
+              }}
+            >
               ادامه
             </Button>
-          ) : step === 5 ? (
-            <Button size="sm" disabled={busy} onClick={() => void finish()}>
+          ) : step === 6 ? (
+            <Button
+              size="sm"
+              disabled={busy || !installedModel || !llmReady}
+              onClick={() => void finish()}
+            >
               شروع کنیم
             </Button>
           ) : null}
@@ -593,6 +695,64 @@ function ReadyHint({
   )
 }
 
+function CapabilityGuide({
+  icon: Icon,
+  title,
+  status,
+  description,
+  guide,
+  action,
+  children
+}: {
+  icon: LucideIcon
+  title: string
+  status: string
+  description: string
+  guide?: string
+  action?: { label: string; onClick: () => void }
+  children?: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-border/55 bg-card/25 p-3">
+      <div className="flex items-start gap-3">
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-foreground/7 text-muted-foreground">
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs font-medium">{title}</h2>
+            <span className="shrink-0 text-[0.58rem] text-muted-foreground">{status}</span>
+          </div>
+          <p className="mt-1 text-[0.65rem] leading-5 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {children ? (
+        <div className="flex flex-col gap-3 border-t border-border/40 pt-3">{children}</div>
+      ) : null}
+      {guide || action ? (
+        <div className="flex items-end justify-between gap-3 border-t border-border/40 pt-2.5">
+          {guide ? (
+            <details className="group min-w-0 flex-1 text-[0.63rem] text-muted-foreground">
+              <summary className="cursor-pointer select-none font-medium text-foreground/75">
+                راهنمای راه‌اندازی
+              </summary>
+              <p className="mt-1.5 leading-5">{guide}</p>
+            </details>
+          ) : (
+            <span />
+          )}
+          {action ? (
+            <Button variant="outline" size="xs" className="shrink-0" onClick={action.onClick}>
+              {action.label}
+              {action.label.includes('skills.sh') ? <ExternalLink data-icon="inline-end" /> : null}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
 function Field({
   label,
   children
@@ -630,13 +790,34 @@ function TextField({
   )
 }
 
+function TextAreaField({
+  value,
+  placeholder,
+  onChange
+}: {
+  value: string
+  placeholder: string
+  onChange: (value: string) => void
+}): React.JSX.Element {
+  return (
+    <textarea
+      value={value}
+      placeholder={placeholder}
+      maxLength={500}
+      rows={3}
+      onChange={(event) => onChange(event.target.value)}
+      className="min-h-20 resize-none rounded-lg border border-border/70 bg-background/40 px-3 py-2.5 text-sm leading-6 outline-none focus-visible:border-ring"
+    />
+  )
+}
+
 function Choice<T extends string>({
   options,
   value,
   horizontal = false,
   onSelect
 }: {
-  options: Array<{ id: T; label: string }>
+  options: Array<{ id: T; label: string; description?: string }>
   value: T
   horizontal?: boolean
   onSelect: (id: T) => void
@@ -655,7 +836,12 @@ function Choice<T extends string>({
               : 'border-border/60 bg-card/20 text-muted-foreground hover:bg-foreground/5'
           )}
         >
-          {option.label}
+          <span className="block">{option.label}</span>
+          {option.description ? (
+            <span className="mt-0.5 block text-[0.6rem] leading-4 opacity-70">
+              {option.description}
+            </span>
+          ) : null}
         </button>
       ))}
     </div>

@@ -8,6 +8,8 @@ import { SoulStore, formatUserMarkdown } from './store'
 test('new profile Markdown uses English structure and values', () => {
   const markdown = formatUserMarkdown({
     name: 'Mani',
+    about: 'Building Micky and prefers practical help.',
+    personalityProfile: 'thoughtful',
     addressForm: 'to',
     languageMix: 'mixed',
     city: 'Tehran',
@@ -17,6 +19,8 @@ test('new profile Markdown uses English structure and values', () => {
   })
   assert.match(markdown, /^# User Profile/m)
   assert.match(markdown, /- Name: Mani/)
+  assert.match(markdown, /- About: Building Micky and prefers practical help\./)
+  assert.match(markdown, /- Personality profile: curious thinking partner/)
   assert.match(markdown, /- Address form: informal to/)
   assert.doesNotMatch(markdown, /نامشخص|# کاربر/)
 })

@@ -2,13 +2,21 @@ import { readFile, rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import type { LlmProviderId } from '@/lib/llm'
+import type { WebSearchApiProviderId } from '@/lib/web-search'
 
 const require = createRequire(import.meta.url)
 
 const LEGACY_SECRETS_FILE_NAME = 'secrets.json'
 const KEYCHAIN_SERVICE = 'dev.micky.app'
 type SecretAccount =
-  'openrouter' | 'custom-llm' | 'ollama-llm' | 'lmstudio-llm' | 'gemini-tts' | 'elevenlabs-tts'
+  | 'openrouter'
+  | 'custom-llm'
+  | 'ollama-llm'
+  | 'lmstudio-llm'
+  | 'gemini-tts'
+  | 'elevenlabs-tts'
+  | 'exa-search'
+  | 'firecrawl-search'
 type TtsSecretProvider = 'gemini' | 'elevenlabs'
 
 export const KEYCHAIN_UNAVAILABLE_ERROR =
@@ -43,7 +51,9 @@ export class SecretStore {
     'ollama-llm': null,
     'lmstudio-llm': null,
     'gemini-tts': null,
-    'elevenlabs-tts': null
+    'elevenlabs-tts': null,
+    'exa-search': null,
+    'firecrawl-search': null
   }
   #keychainAvailable = false
 
@@ -70,6 +80,14 @@ export class SecretStore {
 
   hasTtsApiKey(provider: TtsSecretProvider): boolean {
     return Boolean(this.getTtsApiKey(provider))
+  }
+
+  getWebSearchApiKey(provider: WebSearchApiProviderId): string | null {
+    return this.#keys[webSearchAccount(provider)]
+  }
+
+  hasWebSearchApiKey(provider: WebSearchApiProviderId): boolean {
+    return Boolean(this.getWebSearchApiKey(provider))
   }
 
   async load(): Promise<void> {
@@ -141,6 +159,26 @@ export class SecretStore {
     }
   }
 
+  async setWebSearchApiKey(provider: WebSearchApiProviderId, value: string): Promise<void> {
+    const account = webSearchAccount(provider)
+    const trimmed = value.trim()
+    if (!trimmed) {
+      await this.clearWebSearchApiKey(provider)
+      return
+    }
+    if (!this.#backend || !this.#keychainAvailable) throw new Error(KEYCHAIN_UNAVAILABLE_ERROR)
+    this.#backend.setPassword(KEYCHAIN_SERVICE, account, trimmed)
+    this.#keys[account] = trimmed
+  }
+
+  async clearWebSearchApiKey(provider: WebSearchApiProviderId): Promise<void> {
+    const account = webSearchAccount(provider)
+    this.#keys[account] = null
+    if (this.#backend && this.#keychainAvailable) {
+      this.#backend.deletePassword(KEYCHAIN_SERVICE, account)
+    }
+  }
+
   #readKeychain(account: SecretAccount): string | null {
     if (!this.#backend) return null
     try {
@@ -200,7 +238,16 @@ function probeKeychain(backend: KeychainBackend | null): boolean {
 }
 
 function secretAccounts(): SecretAccount[] {
-  return ['openrouter', 'custom-llm', 'ollama-llm', 'lmstudio-llm', 'gemini-tts', 'elevenlabs-tts']
+  return [
+    'openrouter',
+    'custom-llm',
+    'ollama-llm',
+    'lmstudio-llm',
+    'gemini-tts',
+    'elevenlabs-tts',
+    'exa-search',
+    'firecrawl-search'
+  ]
 }
 
 function llmAccount(provider: LlmProviderId): SecretAccount {
@@ -210,6 +257,10 @@ function llmAccount(provider: LlmProviderId): SecretAccount {
 
 function ttsAccount(provider: TtsSecretProvider): SecretAccount {
   return provider === 'gemini' ? 'gemini-tts' : 'elevenlabs-tts'
+}
+
+function webSearchAccount(provider: WebSearchApiProviderId): SecretAccount {
+  return provider === 'exa' ? 'exa-search' : 'firecrawl-search'
 }
 
 function decodeLegacySecret(record: SecretRecord | undefined): string | null {

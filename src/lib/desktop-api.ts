@@ -2,7 +2,12 @@ import type { AgentDelta, AgentStatus } from '@/lib/agent'
 import type { ConversationStatus } from '@/lib/conversation'
 import type { ChatDetail, ChatSearchHit, ChatSearchOptions, ChatsSnapshot } from '@/lib/chats'
 import type { ModelsSnapshot, SpeechStatus, SpeechTranscript } from '@/lib/asr'
-import type { LlmProviderId, LlmSnapshot, OpenAiCompatibleProviderId } from '@/lib/llm'
+import type {
+  LlmProviderId,
+  LlmReasoningEffort,
+  LlmSnapshot,
+  OpenAiCompatibleProviderId
+} from '@/lib/llm'
 import type { AppTheme, SettingsSnapshot } from '@/lib/settings'
 import type { SoulFileId, SoulSnapshot, UserProfileDraft } from '@/lib/soul'
 import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
@@ -10,6 +15,12 @@ import type { TtsPlayback, TtsProviderId, TtsSnapshot, TtsStatus } from '@/lib/t
 import type { DesktopPlatform } from '@/lib/shortcuts'
 import type { SkillsSnapshot } from '@/lib/skills'
 import type { EarconKind } from '@/lib/earcon'
+import type {
+  WebSearchApiProviderId,
+  WebSearchProviderId,
+  WebSearchSnapshot
+} from '@/lib/web-search'
+import type { AppUpdateSnapshot } from '@/lib/app-update'
 
 export type MickyAPI = {
   wakeWord: {
@@ -91,7 +102,19 @@ export type MickyAPI = {
     setVisionModel: (modelId: string) => Promise<SettingsSnapshot>
     setTheme: (theme: AppTheme) => Promise<SettingsSnapshot>
     setFontFamily: (fontFamily: string) => Promise<SettingsSnapshot>
+    setAudioDevice: (kind: 'input' | 'output', deviceId: string) => Promise<SettingsSnapshot>
     onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void) => () => void
+  }
+  webSearch: {
+    getSnapshot: () => Promise<WebSearchSnapshot>
+    setProviderEnabled: (
+      providerId: WebSearchProviderId,
+      enabled: boolean
+    ) => Promise<WebSearchSnapshot>
+    setApiKey: (providerId: WebSearchApiProviderId, apiKey: string) => Promise<WebSearchSnapshot>
+    clearApiKey: (providerId: WebSearchApiProviderId) => Promise<WebSearchSnapshot>
+    openKeys: (providerId: WebSearchApiProviderId) => Promise<void>
+    onSnapshotChange: (listener: (snapshot: WebSearchSnapshot) => void) => () => void
   }
   skills: {
     getSnapshot: () => Promise<SkillsSnapshot>
@@ -108,11 +131,20 @@ export type MickyAPI = {
     onOpenSettings: (listener: () => void) => () => void
     onEarcon: (listener: (kind: EarconKind) => void) => () => void
   }
+  updates: {
+    getSnapshot: () => Promise<AppUpdateSnapshot>
+    check: () => Promise<AppUpdateSnapshot>
+    openDownload: () => Promise<void>
+    openReleases: () => Promise<void>
+    onSnapshotChange: (listener: (snapshot: AppUpdateSnapshot) => void) => () => void
+  }
   llm: {
     getSnapshot: () => Promise<LlmSnapshot>
     setProvider: (providerId: LlmProviderId) => Promise<LlmSnapshot>
     setBaseUrl: (providerId: OpenAiCompatibleProviderId, baseUrl: string) => Promise<LlmSnapshot>
     setModel: (modelId: string) => Promise<LlmSnapshot>
+    setTemperature: (temperature: number) => Promise<LlmSnapshot>
+    setReasoningEffort: (effort: LlmReasoningEffort) => Promise<LlmSnapshot>
     addCustomModel: (modelId: string) => Promise<LlmSnapshot>
     removeCustomModel: (modelId: string) => Promise<LlmSnapshot>
     setApiKey: (providerId: LlmProviderId, apiKey: string) => Promise<LlmSnapshot>

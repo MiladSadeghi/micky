@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  copyPlaybackAudio,
-  INITIAL_TTS_STATUS,
-  type TtsSnapshot,
-  type TtsStatus
-} from '@/lib/tts'
+import { copyPlaybackAudio, INITIAL_TTS_STATUS, type TtsSnapshot, type TtsStatus } from '@/lib/tts'
+import { DEFAULT_AUDIO_DEVICE_ID } from '@/lib/settings'
 
 type ActiveAudio = {
   id: string
@@ -12,7 +8,19 @@ type ActiveAudio = {
   url: string
 }
 
-export function useTts(): { status: TtsStatus; snapshot: TtsSnapshot | null } {
+async function applyOutputDevice(audio: HTMLAudioElement, deviceId: string): Promise<void> {
+  if (typeof audio.setSinkId !== 'function') return
+  try {
+    await audio.setSinkId(deviceId)
+  } catch {
+    if (deviceId !== DEFAULT_AUDIO_DEVICE_ID) await audio.setSinkId(DEFAULT_AUDIO_DEVICE_ID)
+  }
+}
+
+export function useTts(outputDeviceId = DEFAULT_AUDIO_DEVICE_ID): {
+  status: TtsStatus
+  snapshot: TtsSnapshot | null
+} {
   const [status, setStatus] = useState<TtsStatus>(INITIAL_TTS_STATUS)
   const [snapshot, setSnapshot] = useState<TtsSnapshot | null>(null)
   const activeAudio = useRef<ActiveAudio | null>(null)
@@ -64,9 +72,11 @@ export function useTts(): { status: TtsStatus; snapshot: TtsSnapshot | null } {
         once: true
       })
       audio.src = url
-      void audio.play().catch((error: unknown) => {
-        finish(error instanceof Error ? error.message : 'پخش صدا ممکن نشد.')
-      })
+      void applyOutputDevice(audio, outputDeviceId)
+        .then(() => audio.play())
+        .catch((error: unknown) => {
+          finish(error instanceof Error ? error.message : 'پخش صدا ممکن نشد.')
+        })
     })
     const stopStop = window.api.tts.onStop((id) => {
       if (activeAudio.current?.id === id) clearAudio()
@@ -80,7 +90,7 @@ export function useTts(): { status: TtsStatus; snapshot: TtsSnapshot | null } {
       stopPlayback()
       stopStop()
     }
-  }, [])
+  }, [outputDeviceId])
 
   return { status, snapshot }
 }

@@ -16,6 +16,7 @@ type WakeWordResources = {
 
 type WakeWordWorkerMessage =
   | { type: 'ready' }
+  | { type: 'reset'; id: number }
   | { type: 'score'; score: number }
   | { type: 'detected'; score: number }
   | { type: 'error'; error: string }
@@ -24,6 +25,7 @@ type WakeWordServiceOptions = {
   workerScript: string
   resources: WakeWordResources
   getWindow: () => BrowserWindow | null
+  createWorker?: (script: string) => Worker
   enabled?: boolean
   onActivated?: (activation: WakeWordActivation) => void
   onResume?: () => void
@@ -36,6 +38,9 @@ const SCORE_BROADCAST_INTERVAL_MS = 240
 
 export class WakeWordService {
   #worker: Worker | null = null
+  #workerReady = false
+  #resetId = 0
+  #pendingResumeResetId: number | null = null
   #status: WakeWordStatus = INITIAL_WAKE_WORD_STATUS
   #lastScoreBroadcast = 0
   #disposed = false
@@ -62,10 +67,20 @@ export class WakeWordService {
     this.#status = { ...this.#status, enabled, error: null, latestScore: 0 }
     if (!enabled) {
       this.options.onResume?.()
-      this.#stopWorker()
+      // Keep the ONNX worker alive while muted. Abruptly terminating a worker in
+      // the middle of native inference can take down the Electron main process.
+      // Reset is serialized behind any inference already in progress.
+      this.#pendingResumeResetId = null
+      this.#resetWorker(false)
       this.#update({ phase: 'disabled', captureRequested: false })
+    } else if (this.#worker) {
+      if (this.#workerReady) {
+        this.#resetWorker(true)
+        this.#update({ phase: 'loading', captureRequested: false })
+      } else {
+        this.#update({ phase: 'loading', captureRequested: false })
+      }
     } else {
-      this.#stopWorker()
       this.#startWorker()
     }
     return this.#status
@@ -73,6 +88,12 @@ export class WakeWordService {
 
   retry(): WakeWordStatus {
     if (!this.#status.enabled) return this.setEnabled(true)
+    if (this.#worker && this.#workerReady) {
+      this.#status = { ...this.#status, error: null, latestScore: 0 }
+      this.#resetWorker(true)
+      this.#update({ phase: 'loading', captureRequested: false })
+      return this.#status
+    }
     this.#stopWorker()
     this.#startWorker()
     return this.#status
@@ -155,8 +176,11 @@ export class WakeWordService {
     }
 
     this.#update({ phase: 'loading', captureRequested: false, error: null })
-    const worker = new Worker(this.options.workerScript)
+    const worker =
+      this.options.createWorker?.(this.options.workerScript) ??
+      new Worker(this.options.workerScript)
     this.#worker = worker
+    this.#workerReady = false
 
     worker.on('message', (message: WakeWordWorkerMessage) => {
       if (worker === this.#worker) this.#handleWorkerMessage(message)
@@ -164,11 +188,16 @@ export class WakeWordService {
     worker.on('error', (error) => {
       if (worker !== this.#worker) return
       this.#worker = null
+      this.#workerReady = false
+      this.#pendingResumeResetId = null
+      if (!this.#status.enabled) return
       this.#update({ phase: 'error', captureRequested: false, error: error.message })
     })
     worker.on('exit', (code) => {
       if (worker !== this.#worker) return
       this.#worker = null
+      this.#workerReady = false
+      this.#pendingResumeResetId = null
       if (!this.#disposed && this.#status.enabled && code !== 0) {
         this.#update({
           phase: 'error',
@@ -187,11 +216,22 @@ export class WakeWordService {
   #stopWorker(): void {
     const worker = this.#worker
     this.#worker = null
+    this.#workerReady = false
+    this.#pendingResumeResetId = null
     if (worker) void worker.terminate()
+  }
+
+  #resetWorker(resumeAfter: boolean): void {
+    if (!this.#worker || !this.#workerReady) return
+    const id = ++this.#resetId
+    this.#pendingResumeResetId = resumeAfter ? id : null
+    this.#worker.postMessage({ type: 'reset', id })
   }
 
   #handleWorkerMessage(message: WakeWordWorkerMessage): void {
     if (message.type === 'ready') {
+      this.#workerReady = true
+      if (!this.#status.enabled) return
       this.#update({
         phase: 'listening',
         captureRequested: true,
@@ -200,7 +240,16 @@ export class WakeWordService {
       })
       return
     }
+    if (message.type === 'reset') {
+      if (message.id !== this.#pendingResumeResetId) return
+      this.#pendingResumeResetId = null
+      if (!this.#status.enabled) return
+      this.#update({ phase: 'listening', captureRequested: true, latestScore: 0, error: null })
+      return
+    }
     if (message.type === 'error') {
+      if (!this.#workerReady) this.#stopWorker()
+      if (!this.#status.enabled) return
       this.#update({ phase: 'error', captureRequested: false, error: message.error })
       return
     }

@@ -20,7 +20,13 @@ test('discovers models from an OpenAI-compatible endpoint with an optional key',
       assert.equal(input, 'https://llm.example/v1/models')
       assert.deepEqual(init?.headers, { Authorization: 'Bearer secret' })
       return new Response(
-        JSON.stringify({ data: [{ id: 'model-a' }, { id: 'model-a' }, { id: 'model-b' }] }),
+        JSON.stringify({
+          data: [
+            { id: 'model-a', supported_parameters: ['reasoning'] },
+            { id: 'model-a' },
+            { id: 'model-b' }
+          ]
+        }),
         { headers: { 'Content-Type': 'application/json' } }
       )
     }
@@ -31,4 +37,6 @@ test('discovers models from an OpenAI-compatible endpoint with an optional key',
     models.map((model) => model.id),
     ['model-a', 'model-b']
   )
+  assert.equal(models[0]?.supportsReasoning, true)
+  assert.equal(models[1]?.supportsReasoning, undefined)
 })

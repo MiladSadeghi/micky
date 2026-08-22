@@ -15,6 +15,7 @@ export type LlmProviderOption = {
 
 export type LlmProviderModelIds = Record<LlmProviderId, string>
 export type LlmBaseUrls = Record<OpenAiCompatibleProviderId, string>
+export type LlmReasoningEffort = 'default' | 'none' | 'low' | 'medium' | 'high'
 
 export type LlmSettings = {
   providerId: LlmProviderId
@@ -23,6 +24,7 @@ export type LlmSettings = {
   baseUrls: LlmBaseUrls
   customModelIds: string[]
   temperature: number
+  reasoningEffort: LlmReasoningEffort
 }
 
 export type LlmModelInfo = {
@@ -31,6 +33,7 @@ export type LlmModelInfo = {
   description: string
   curated: boolean
   inputModalities: string[]
+  supportsReasoning?: boolean
 }
 
 export type LlmSnapshot = {
@@ -44,12 +47,16 @@ export type LlmSnapshot = {
   local: boolean
   keychainAvailable: boolean
   configured: boolean
+  temperature: number
+  reasoningEffort: LlmReasoningEffort
+  supportsReasoning: boolean
   error: string | null
 }
 
 export const DEFAULT_LLM_PROVIDER_ID: LlmProviderId = 'openrouter'
 export const DEFAULT_LLM_MODEL_ID = 'qwen/qwen3.7-flash'
 export const DEFAULT_LLM_TEMPERATURE = 0.7
+export const DEFAULT_LLM_REASONING_EFFORT: LlmReasoningEffort = 'default'
 export const DEFAULT_LLM_PROVIDER_MODEL_IDS: LlmProviderModelIds = {
   openrouter: DEFAULT_LLM_MODEL_ID,
   custom: '',
@@ -99,7 +106,8 @@ export const DEFAULT_LLM_SETTINGS: LlmSettings = {
   providerModelIds: { ...DEFAULT_LLM_PROVIDER_MODEL_IDS },
   baseUrls: { ...DEFAULT_LLM_BASE_URLS },
   customModelIds: [],
-  temperature: DEFAULT_LLM_TEMPERATURE
+  temperature: DEFAULT_LLM_TEMPERATURE,
+  reasoningEffort: DEFAULT_LLM_REASONING_EFFORT
 }
 
 export function isLlmProviderId(value: unknown): value is LlmProviderId {
@@ -110,6 +118,16 @@ export function isOpenAiCompatibleProviderId(
   value: LlmProviderId
 ): value is OpenAiCompatibleProviderId {
   return value !== 'openrouter'
+}
+
+export function isLlmReasoningEffort(value: unknown): value is LlmReasoningEffort {
+  return (
+    value === 'default' ||
+    value === 'none' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high'
+  )
 }
 
 export const CURATED_LLM_MODELS: LlmModelInfo[] = [

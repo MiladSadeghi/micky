@@ -93,6 +93,7 @@
       "dist/**",
       "dist-electron/**",
       "assets/**",
+      "CHANGELOG.md",
       "!assets/wakeword/**",
       "package.json"
     ],

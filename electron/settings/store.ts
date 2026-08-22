@@ -8,14 +8,17 @@ import {
   DEFAULT_LLM_MODEL_ID,
   DEFAULT_LLM_PROVIDER_MODEL_IDS,
   DEFAULT_LLM_PROVIDER_ID,
+  DEFAULT_LLM_REASONING_EFFORT,
   DEFAULT_LLM_SETTINGS,
   DEFAULT_LLM_TEMPERATURE,
   isLlmProviderId,
+  isLlmReasoningEffort,
   type LlmSettings
 } from '@/lib/llm'
 import {
   DEFAULT_ASSISTANT_SHORTCUT,
   DEFAULT_DICTATION_SHORTCUT,
+  DEFAULT_AUDIO_DEVICE_ID,
   DEFAULT_FONT_FAMILY,
   DEFAULT_THEME,
   DEFAULT_WAKE_WORD_SHORTCUT,
@@ -29,6 +32,11 @@ import {
   type TtsProviderId,
   type TtsSettings
 } from '@/lib/tts'
+import {
+  DEFAULT_WEB_SEARCH_SETTINGS,
+  isWebSearchProviderId,
+  type WebSearchSettings
+} from '@/lib/web-search'
 
 const SETTINGS_FILE_NAME = 'settings.json'
 const CURATED_MODEL_IDS = new Set(CURATED_LLM_MODELS.map((model) => model.id))
@@ -42,6 +50,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     customModelIds: []
   },
   tts: { ...DEFAULT_TTS_SETTINGS },
+  webSearch: { ...DEFAULT_WEB_SEARCH_SETTINGS, enabledProviders: [] },
   onboardingCompleted: false,
   systemToolsEnabled: true,
   assistantShortcut: DEFAULT_ASSISTANT_SHORTCUT,
@@ -56,12 +65,15 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   skillsEnabled: true,
   disabledSkillIds: [],
   theme: DEFAULT_THEME,
-  fontFamily: DEFAULT_FONT_FAMILY
+  fontFamily: DEFAULT_FONT_FAMILY,
+  inputDeviceId: DEFAULT_AUDIO_DEVICE_ID,
+  outputDeviceId: DEFAULT_AUDIO_DEVICE_ID
 }
 
 export class SettingsStore {
   #path: string
   #settings: AppSettings = cloneSettings(DEFAULT_APP_SETTINGS)
+  #persistQueue: Promise<void> = Promise.resolve()
 
   constructor(userDataPath: string) {
     this.#path = join(userDataPath, SETTINGS_FILE_NAME)
@@ -87,16 +99,20 @@ export class SettingsStore {
       ...patch,
       endpoint: { ...this.#settings.endpoint, ...patch.endpoint },
       llm: { ...this.#settings.llm, ...patch.llm },
-      tts: { ...this.#settings.tts, ...patch.tts }
+      tts: { ...this.#settings.tts, ...patch.tts },
+      webSearch: { ...this.#settings.webSearch, ...patch.webSearch }
     })
-    await this.#persist()
+    const snapshot = cloneSettings(this.#settings)
+    const persist = this.#persistQueue.then(() => this.#persist(snapshot))
+    this.#persistQueue = persist.catch(() => undefined)
+    await persist
     return this.get()
   }
 
-  async #persist(): Promise<void> {
+  async #persist(settings: AppSettings): Promise<void> {
     await mkdir(dirname(this.#path), { recursive: true })
     const tempPath = `${this.#path}.tmp`
-    await writeFile(tempPath, `${JSON.stringify(this.#settings, null, 2)}\n`, 'utf8')
+    await writeFile(tempPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8')
     await rename(tempPath, this.#path)
   }
 }
@@ -112,6 +128,10 @@ function cloneSettings(settings: AppSettings): AppSettings {
       customModelIds: [...settings.llm.customModelIds]
     },
     tts: { ...settings.tts },
+    webSearch: {
+      ...settings.webSearch,
+      enabledProviders: [...settings.webSearch.enabledProviders]
+    },
     systemToolsEnabled: settings.systemToolsEnabled !== false,
     disabledSkillIds: [...settings.disabledSkillIds]
   }
@@ -177,6 +197,9 @@ function normalizeLlmSettings(value: unknown): LlmSettings {
     2,
     Math.max(0, readNumber(record.temperature, DEFAULT_LLM_TEMPERATURE))
   )
+  const reasoningEffort = isLlmReasoningEffort(record.reasoningEffort)
+    ? record.reasoningEffort
+    : DEFAULT_LLM_REASONING_EFFORT
 
   return {
     providerId,
@@ -184,7 +207,8 @@ function normalizeLlmSettings(value: unknown): LlmSettings {
     providerModelIds,
     baseUrls,
     customModelIds,
-    temperature
+    temperature,
+    reasoningEffort
   }
 }
 
@@ -204,11 +228,19 @@ function normalizeTtsSettings(value: unknown): TtsSettings {
       ? record.elevenLabsVoiceId.trim().slice(0, 128)
       : DEFAULT_TTS_SETTINGS.elevenLabsVoiceId
   return {
-    enabled: record.enabled !== false,
+    enabled: record.enabled === true,
     providerId,
     geminiVoice,
     elevenLabsVoiceId
   }
+}
+
+function normalizeWebSearchSettings(value: unknown): WebSearchSettings {
+  const record = isRecord(value) ? value : {}
+  const enabledProviders = Array.isArray(record.enabledProviders)
+    ? [...new Set(record.enabledProviders.filter(isWebSearchProviderId))]
+    : []
+  return { enabledProviders }
 }
 
 function normalizeSettings(value: unknown): AppSettings {
@@ -237,6 +269,8 @@ function normalizeSettings(value: unknown): AppSettings {
     disabledSkillIds: readStringArray(record.disabledSkillIds, 200, 80),
     theme: record.theme === 'light' ? 'light' : DEFAULT_THEME,
     fontFamily: readFontFamily(record.fontFamily),
+    inputDeviceId: readAudioDeviceId(record.inputDeviceId),
+    outputDeviceId: readAudioDeviceId(record.outputDeviceId),
     endpoint: {
       rule1MinTrailingSilence: readNumber(
         endpointRecord.rule1MinTrailingSilence,
@@ -255,7 +289,8 @@ function normalizeSettings(value: unknown): AppSettings {
       )
     },
     llm: normalizeLlmSettings(record.llm),
-    tts: normalizeTtsSettings(record.tts)
+    tts: normalizeTtsSettings(record.tts),
+    webSearch: normalizeWebSearchSettings(record.webSearch)
   }
 }
 
@@ -278,6 +313,12 @@ function readFontFamily(value: unknown): string {
   return fontFamily && !/[\u0000-\u001f\u007f;{}]/.test(fontFamily)
     ? fontFamily
     : DEFAULT_FONT_FAMILY
+}
+
+function readAudioDeviceId(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_AUDIO_DEVICE_ID
+  const deviceId = value.trim().slice(0, 512)
+  return deviceId && !/[\u0000-\u001f\u007f]/.test(deviceId) ? deviceId : DEFAULT_AUDIO_DEVICE_ID
 }
 
 function readStringArray(value: unknown, maxItems: number, maxLength: number): string[] {

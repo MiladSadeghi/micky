@@ -21,6 +21,7 @@ import type { MickyAPI } from '@/lib/desktop-api'
 import {
   LLM_SNAPSHOT_CHANNEL,
   type LlmProviderId,
+  type LlmReasoningEffort,
   type LlmSnapshot,
   type OpenAiCompatibleProviderId
 } from '@/lib/llm'
@@ -44,6 +45,13 @@ import {
 } from '@/lib/soul'
 import type { WakeWordActivation, WakeWordStatus } from '@/lib/wake-word'
 import { SKILLS_SNAPSHOT_CHANNEL, type SkillsSnapshot } from '@/lib/skills'
+import {
+  WEB_SEARCH_SNAPSHOT_CHANNEL,
+  type WebSearchApiProviderId,
+  type WebSearchProviderId,
+  type WebSearchSnapshot
+} from '@/lib/web-search'
+import { APP_UPDATE_SNAPSHOT_CHANNEL, type AppUpdateSnapshot } from '@/lib/app-update'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const handler = (_event: Electron.IpcRendererEvent, payload: T): void => listener(payload)
@@ -171,8 +179,26 @@ const api: MickyAPI = {
     setTheme: (theme): Promise<SettingsSnapshot> => ipcRenderer.invoke('settings:set-theme', theme),
     setFontFamily: (fontFamily): Promise<SettingsSnapshot> =>
       ipcRenderer.invoke('settings:set-font-family', fontFamily),
+    setAudioDevice: (kind, deviceId): Promise<SettingsSnapshot> =>
+      ipcRenderer.invoke('settings:set-audio-device', kind, deviceId),
     onSnapshotChange: (listener: (snapshot: SettingsSnapshot) => void): (() => void) =>
       subscribe(SETTINGS_SNAPSHOT_CHANNEL, listener)
+  },
+  webSearch: {
+    getSnapshot: (): Promise<WebSearchSnapshot> => ipcRenderer.invoke('web-search:get-snapshot'),
+    setProviderEnabled: (
+      providerId: WebSearchProviderId,
+      enabled: boolean
+    ): Promise<WebSearchSnapshot> =>
+      ipcRenderer.invoke('web-search:set-provider-enabled', providerId, enabled),
+    setApiKey: (providerId: WebSearchApiProviderId, apiKey: string): Promise<WebSearchSnapshot> =>
+      ipcRenderer.invoke('web-search:set-api-key', providerId, apiKey),
+    clearApiKey: (providerId: WebSearchApiProviderId): Promise<WebSearchSnapshot> =>
+      ipcRenderer.invoke('web-search:clear-api-key', providerId),
+    openKeys: (providerId: WebSearchApiProviderId): Promise<void> =>
+      ipcRenderer.invoke('web-search:open-keys', providerId),
+    onSnapshotChange: (listener: (snapshot: WebSearchSnapshot) => void): (() => void) =>
+      subscribe(WEB_SEARCH_SNAPSHOT_CHANNEL, listener)
   },
   skills: {
     getSnapshot: (): Promise<SkillsSnapshot> => ipcRenderer.invoke('skills:get-snapshot'),
@@ -194,6 +220,14 @@ const api: MickyAPI = {
     onEarcon: (listener: (kind: EarconKind) => void): (() => void) =>
       subscribe(EARCON_CHANNEL, listener)
   },
+  updates: {
+    getSnapshot: (): Promise<AppUpdateSnapshot> => ipcRenderer.invoke('app-update:get-snapshot'),
+    check: (): Promise<AppUpdateSnapshot> => ipcRenderer.invoke('app-update:check'),
+    openDownload: (): Promise<void> => ipcRenderer.invoke('app-update:open-download'),
+    openReleases: (): Promise<void> => ipcRenderer.invoke('app-update:open-releases'),
+    onSnapshotChange: (listener: (snapshot: AppUpdateSnapshot) => void): (() => void) =>
+      subscribe(APP_UPDATE_SNAPSHOT_CHANNEL, listener)
+  },
   llm: {
     getSnapshot: (): Promise<LlmSnapshot> => ipcRenderer.invoke('llm:get-snapshot'),
     setProvider: (providerId: LlmProviderId): Promise<LlmSnapshot> =>
@@ -202,6 +236,10 @@ const api: MickyAPI = {
       ipcRenderer.invoke('llm:set-base-url', providerId, baseUrl),
     setModel: (modelId: string): Promise<LlmSnapshot> =>
       ipcRenderer.invoke('llm:set-model', modelId),
+    setTemperature: (temperature: number): Promise<LlmSnapshot> =>
+      ipcRenderer.invoke('llm:set-temperature', temperature),
+    setReasoningEffort: (effort: LlmReasoningEffort): Promise<LlmSnapshot> =>
+      ipcRenderer.invoke('llm:set-reasoning-effort', effort),
     addCustomModel: (modelId: string): Promise<LlmSnapshot> =>
       ipcRenderer.invoke('llm:add-custom-model', modelId),
     removeCustomModel: (modelId: string): Promise<LlmSnapshot> =>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { shouldShowWakeFlyover } from './activation'
+import { assistantShortcutAction, shouldShowWakeFlyover } from './activation'
 
 const WAKE_ACTIVATION = {
   source: 'wake-word',
@@ -15,4 +15,53 @@ test('shows the flyover for a background wake-word activation', () => {
 
 test('does not show the background flyover for manual orb activation', () => {
   assert.equal(shouldShowWakeFlyover({ ...WAKE_ACTIVATION, source: 'manual' }, false), false)
+})
+
+test('reveals a main-window task instead of starting a new shortcut session', () => {
+  assert.equal(
+    assistantShortcutAction({
+      flyoverActive: false,
+      flyoverMirroring: false,
+      conversationMode: 'agent',
+      speechActive: false,
+      dictationActive: false
+    }),
+    'reveal-ongoing'
+  )
+  assert.equal(
+    assistantShortcutAction({
+      flyoverActive: false,
+      flyoverMirroring: false,
+      conversationMode: 'idle',
+      speechActive: true,
+      dictationActive: false
+    }),
+    'reveal-ongoing'
+  )
+})
+
+test('hides a mirrored task without stopping its main-window session', () => {
+  assert.equal(
+    assistantShortcutAction({
+      flyoverActive: true,
+      flyoverMirroring: true,
+      conversationMode: 'agent',
+      speechActive: false,
+      dictationActive: false
+    }),
+    'hide-mirror'
+  )
+})
+
+test('starts a new assistant session when only dictation is active', () => {
+  assert.equal(
+    assistantShortcutAction({
+      flyoverActive: false,
+      flyoverMirroring: false,
+      conversationMode: 'idle',
+      speechActive: true,
+      dictationActive: true
+    }),
+    'start-session'
+  )
 })

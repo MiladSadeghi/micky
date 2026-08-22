@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  BadgeInfo,
   BrainCircuit,
   CircleAlert,
   CircleHelp,
@@ -8,6 +9,7 @@ import {
   Ear,
   ExternalLink,
   History,
+  Globe2,
   Keyboard,
   Mic,
   Palette,
@@ -26,6 +28,7 @@ import type { SettingsSnapshot } from '@/lib/settings'
 import type { LlmSnapshot } from '@/lib/llm'
 import type { ChatsSnapshot } from '@/lib/chats'
 import type { SkillsSnapshot } from '@/lib/skills'
+import type { AppUpdateSnapshot } from '@/lib/app-update'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -66,9 +69,14 @@ import { PersonalitySettings } from '@/components/personality-settings'
 import { ShenavaModelHelp } from '@/components/shenava-model-help'
 import { TtsSettings } from '@/components/tts-settings'
 import { AppearanceSettings } from '@/components/appearance-settings'
+import { AudioDeviceSettings } from '@/components/audio-device-settings'
 import { useLlm } from '@/hooks/use-llm'
 import { useSoul } from '@/hooks/use-soul'
 import { useSkills } from '@/hooks/use-skills'
+import { useAudioDevices } from '@/hooks/use-audio-devices'
+import { useWebSearch } from '@/hooks/use-web-search'
+import { WebSearchSettings } from '@/components/web-search-settings'
+import { AppVersionSettings } from '@/components/app-version-settings'
 import {
   Empty,
   EmptyContent,
@@ -87,16 +95,30 @@ import {
 } from '@/lib/shortcuts'
 
 type SettingsTab =
-  'appearance' | 'asr' | 'llm' | 'tts' | 'soul' | 'skills' | 'history' | 'shortcuts' | 'about'
+  | 'appearance'
+  | 'asr'
+  | 'llm'
+  | 'tts'
+  | 'search'
+  | 'soul'
+  | 'skills'
+  | 'history'
+  | 'shortcuts'
+  | 'version'
+  | 'about'
 
 const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
   appearance: { title: 'ظاهر', description: 'حالت نمایش و قلم نوشته‌های میکی' },
-  asr: { title: 'شنیدن', description: 'مدل محلی تبدیل صدای تو به متن' },
+  asr: { title: 'شنیدن', description: 'میکروفن و مدل تبدیل صدای تو به متن' },
   llm: {
-    title: 'مدل زبانی',
+    title: 'مغز (مدل AI)',
     description: 'مدلی که فکر می‌کند، ابزار به کار می‌گیرد و جواب می‌دهد'
   },
-  tts: { title: 'صدای میکی', description: 'سرویس و صدایی که جواب‌ها را می‌خواند' },
+  tts: { title: 'حرف‌زدن', description: 'صدا و دستگاهی که جواب‌های میکی را پخش می‌کند' },
+  search: {
+    title: 'جستجوی وب',
+    description: 'سرویس‌هایی که میکی برای پیداکردن اطلاعات تازه به کار می‌گیرد'
+  },
   soul: { title: 'آشنایی', description: 'شخصیت میکی و چیزهایی که از تو به یاد دارد' },
   skills: {
     title: 'مهارت‌ها',
@@ -110,21 +132,33 @@ const TAB_COPY: Record<SettingsTab, { title: string; description: string }> = {
     title: 'میانبرها',
     description: 'میانبر دستیار، دیکته و عبارت بیدارباش'
   },
+  version: {
+    title: 'نسخه و تغییرات',
+    description: 'نسخه نصب‌شده، تازه‌ترین انتشار و یادداشت تغییرات'
+  },
   about: {
     title: 'میکی چطور کار می‌کند؟',
     description: 'از شنیدن صدای تو تا انجام کار و جواب‌دادن'
   }
 }
 
-const SETTINGS_TABS = [
+const CORE_SETTINGS_TABS = [
   { id: 'asr', label: 'شنیدن', icon: Ear },
-  { id: 'llm', label: 'مدل', icon: BrainCircuit },
-  { id: 'tts', label: 'صدا', icon: Volume2 },
+  { id: 'llm', label: 'مغز (مدل AI)', icon: BrainCircuit },
+  { id: 'tts', label: 'حرف‌زدن', icon: Volume2 }
+] satisfies ReadonlyArray<{ id: SettingsTab; label: string; icon: typeof Ear }>
+
+const CAPABILITY_SETTINGS_TABS = [
   { id: 'soul', label: 'شخصیت', icon: Sparkles },
   { id: 'skills', label: 'مهارت‌ها', icon: Puzzle },
+  { id: 'search', label: 'جستجوی وب', icon: Globe2 }
+] satisfies ReadonlyArray<{ id: SettingsTab; label: string; icon: typeof Ear }>
+
+const APP_SETTINGS_TABS = [
   { id: 'history', label: 'گفتگوها', icon: History },
   { id: 'shortcuts', label: 'میانبرها', icon: Keyboard },
   { id: 'appearance', label: 'ظاهر', icon: Palette },
+  { id: 'version', label: 'نسخه و تغییرات', icon: BadgeInfo },
   { id: 'about', label: 'روش کار', icon: CircleHelp }
 ] satisfies ReadonlyArray<{ id: SettingsTab; label: string; icon: typeof Ear }>
 
@@ -160,6 +194,7 @@ type SettingsViewProps = {
   chatsSnapshot: ChatsSnapshot | null
   sessionActive: boolean
   settings: SettingsSnapshot | null
+  appUpdate: AppUpdateSnapshot | null
   onBack: () => void
 }
 
@@ -169,12 +204,15 @@ export function SettingsView({
   chatsSnapshot,
   sessionActive,
   settings,
+  appUpdate,
   onBack
 }: SettingsViewProps): React.JSX.Element {
   const [tab, setTab] = useState<SettingsTab>('asr')
   const llm = useLlm()
   const soul = useSoul()
   const skills = useSkills()
+  const audioDevices = useAudioDevices()
+  const webSearch = useWebSearch()
 
   return (
     <main className="voice-shell flex h-full min-h-0 flex-col overflow-hidden">
@@ -201,7 +239,40 @@ export function SettingsView({
           className="h-full w-44 shrink-0 items-stretch justify-start rounded-none border-l border-border/50 bg-card/30 p-3"
           aria-label="بخش‌های تنظیمات"
         >
-          {SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
+          <p className="px-2 pb-1 text-[0.6rem] font-medium text-muted-foreground">بخش‌های اصلی</p>
+          <div
+            className="flex flex-col gap-1 rounded-xl border border-border/60 bg-muted/50 p-1.5"
+            role="group"
+            aria-label="بخش‌های اصلی میکی"
+          >
+            {CORE_SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
+              <TabsTrigger key={id} value={id} className="h-10 flex-none px-2.5">
+                <Icon data-icon="inline-start" aria-hidden="true" />
+                {label}
+              </TabsTrigger>
+            ))}
+          </div>
+          <Separator className="my-2" />
+          <p className="px-2 pb-1 text-[0.6rem] font-medium text-muted-foreground">
+            رفتار و توانایی‌ها
+          </p>
+          <div
+            className="flex flex-col gap-1 rounded-xl border border-border/50 bg-muted/25 p-1.5"
+            role="group"
+            aria-label="تنظیمات رفتار و توانایی‌های میکی"
+          >
+            {CAPABILITY_SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
+              <TabsTrigger key={id} value={id} className="h-10 flex-none px-2.5">
+                <Icon data-icon="inline-start" aria-hidden="true" />
+                {label}
+              </TabsTrigger>
+            ))}
+          </div>
+          <Separator className="my-2" />
+          <p className="px-2 pb-1 text-[0.6rem] font-medium text-muted-foreground">
+            تنظیمات برنامه
+          </p>
+          {APP_SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
             <TabsTrigger key={id} value={id} className="h-10 flex-none px-3">
               <Icon data-icon="inline-start" aria-hidden="true" />
               {label}
@@ -222,6 +293,8 @@ export function SettingsView({
                 />
               ))}
             </div>
+            <Separator />
+            <AudioDeviceSettings settings={settings} devices={audioDevices} mode="input" compact />
           </div>
         </SettingsTabPanel>
 
@@ -232,6 +305,7 @@ export function SettingsView({
 
         <SettingsTabPanel tab="tts">
           <TtsSettings snapshot={ttsSnapshot} />
+          <AudioDeviceSettings settings={settings} devices={audioDevices} mode="output" />
         </SettingsTabPanel>
 
         <SettingsTabPanel tab="soul">
@@ -240,6 +314,10 @@ export function SettingsView({
 
         <SettingsTabPanel tab="skills">
           <SkillsSettings snapshot={skills} />
+        </SettingsTabPanel>
+
+        <SettingsTabPanel tab="search">
+          <WebSearchSettings snapshot={webSearch} />
         </SettingsTabPanel>
 
         <SettingsTabPanel tab="history">
@@ -252,6 +330,10 @@ export function SettingsView({
 
         <SettingsTabPanel tab="appearance">
           {settings ? <AppearanceSettings settings={settings} /> : null}
+        </SettingsTabPanel>
+
+        <SettingsTabPanel tab="version">
+          <AppVersionSettings snapshot={appUpdate} />
         </SettingsTabPanel>
 
         <SettingsTabPanel tab="about">
@@ -691,17 +773,37 @@ function SettingToggle({
   enabled: boolean
   onChange: (enabled: boolean) => Promise<unknown>
 }): React.JSX.Element {
+  const [saving, setSaving] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
+
+  const handleChange = async (checked: boolean): Promise<void> => {
+    if (saving) return
+    setSaving(true)
+    setSaveFailed(false)
+    try {
+      await onChange(checked)
+    } catch (error) {
+      console.error(`Failed to update setting "${id}":`, error)
+      setSaveFailed(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Field orientation="horizontal">
       <FieldContent>
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
         <FieldDescription className="text-[0.68rem] leading-5">{description}</FieldDescription>
+        {saveFailed ? <FieldError>ذخیره نشد. دوباره تلاش کن.</FieldError> : null}
       </FieldContent>
       <Switch
         id={id}
         dir="ltr"
         checked={enabled}
-        onCheckedChange={(checked) => void onChange(checked)}
+        disabled={saving}
+        aria-invalid={saveFailed}
+        onCheckedChange={(checked) => void handleChange(checked)}
       />
     </Field>
   )

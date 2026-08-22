@@ -92,7 +92,11 @@ function readCompatibleModels(payload: unknown, providerLabel: string): LlmModel
       label: id,
       description: `مدل ${providerLabel}`,
       curated: true,
-      inputModalities: ['text']
+      inputModalities: ['text'],
+      supportsReasoning:
+        'supported_parameters' in item && Array.isArray(item.supported_parameters)
+          ? item.supported_parameters.includes('reasoning')
+          : undefined
     })
   }
   return models
