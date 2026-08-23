@@ -111,6 +111,20 @@ Get the latest installer from [GitHub Releases](https://github.com/xmannii/micky
 
 The current builds are unsigned and macOS builds are not notarized. Gatekeeper or SmartScreen may show a warning. Download Micky only from this repository, or build it from source.
 
+### Opening the unsigned app
+
+Micky's public builds are not code-signed yet. Because Windows and macOS cannot verify the publisher, their security systems may block the app or incorrectly present it as suspicious. This warning is caused by the missing signature and does not by itself mean that Micky is a virus. Only bypass the warning when you downloaded Micky from the [official GitHub Releases page](https://github.com/xmannii/micky/releases/latest).
+
+**Windows:** Windows Defender SmartScreen may say **“Windows protected your PC”**, and Windows Security or other antivirus software may label the unsigned installer as potentially unsafe or even as a virus. For the SmartScreen warning, click **More info**, confirm that this is the Micky installer you downloaded from this repository, and then click **Run anyway**.
+
+**macOS:** After dragging Micky into the Applications folder, macOS may say **“Micky is damaged and can't be opened.”** Close that message, open Terminal, and run:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Micky.app"
+```
+
+Then open Micky again. This command removes macOS's downloaded-file quarantine attribute from Micky only.
+
 ## First run
 
 1. Open Micky and allow microphone access.
