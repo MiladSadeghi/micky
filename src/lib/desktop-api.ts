@@ -21,6 +21,7 @@ import type {
   WebSearchSnapshot
 } from '@/lib/web-search'
 import type { AppUpdateSnapshot } from '@/lib/app-update'
+import type { MainWindowMode } from '@/lib/home-layout'
 
 export type MickyAPI = {
   wakeWord: {
@@ -130,7 +131,7 @@ export type MickyAPI = {
   app: {
     platform: DesktopPlatform
     isDevelopment: boolean
-    setWindowMode: (mode: 'home' | 'settings') => Promise<void>
+    setWindowMode: (mode: MainWindowMode) => Promise<void>
     onOpenSettings: (listener: () => void) => () => void
     onEarcon: (listener: (kind: EarconKind) => void) => () => void
   }

@@ -63,7 +63,10 @@ export class ConversationController {
   sendText(text: string): void {
     const trimmed = text.trim()
     if (!trimmed) return
-    if (this.#mode === 'confirm') return
+    if (this.#mode === 'confirm' || this.#mode === 'agent') return
+    this.#clearFollowupTimer()
+    this.#followupDeadline = null
+    this.options.getSpeech()?.cancelSession()
     void this.#runAgent(trimmed)
   }
 

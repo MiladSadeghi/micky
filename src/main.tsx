@@ -4,6 +4,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { FlyoverApp } from './components/flyover-app'
+import { TooltipProvider } from './components/ui/tooltip'
 import { applyAppearance } from './lib/appearance'
 import { DEFAULT_FONT_FAMILY, DEFAULT_THEME } from './lib/settings'
 
@@ -14,5 +15,7 @@ const fontFamily = query.get('fontFamily')?.trim() || DEFAULT_FONT_FAMILY
 applyAppearance({ theme, fontFamily })
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{isFlyover ? <FlyoverApp /> : <App />}</StrictMode>
+  <StrictMode>
+    <TooltipProvider delay={250}>{isFlyover ? <FlyoverApp /> : <App />}</TooltipProvider>
+  </StrictMode>
 )

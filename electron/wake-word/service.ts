@@ -114,7 +114,7 @@ export class WakeWordService {
   }
 
   reportCaptureError(error: string): void {
-    if (!this.#status.enabled) return
+    if (!this.#status.enabled && !this.#status.captureRequested) return
     this.#update({
       phase: 'error',
       captureRequested: false,
@@ -123,7 +123,10 @@ export class WakeWordService {
   }
 
   activateManually(): WakeWordStatus {
-    if (!this.#status.enabled) return this.setEnabled(true)
+    if (!this.#status.enabled) {
+      this.#activate('manual', 1)
+      return this.#status
+    }
     if (this.#status.phase === 'error') return this.retry()
     if (this.#status.phase === 'activated') {
       this.resumeListening()

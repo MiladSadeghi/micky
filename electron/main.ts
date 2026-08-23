@@ -98,14 +98,15 @@ import {
 import { WebSearchService } from './web-search/service'
 import { extractVersionNotes } from '@/lib/app-update'
 import { AppUpdateService } from './update/service'
+import type { MainWindowMode } from '@/lib/home-layout'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL
-const COMPANION_WIDTH = 400
+const COMPACT_COMPANION_WIDTH = 400
+const EXPANDED_COMPANION_WIDTH = 760
 const COMPANION_HEIGHT = 712
 const SETTINGS_WIDTH = 760
 const SETTINGS_HEIGHT = 712
-type MainWindowMode = 'home' | 'settings'
 let mainWindow: BrowserWindow | null = null
 let flyoverWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -176,7 +177,12 @@ function setMainWindowMode(mode: MainWindowMode): void {
 
   const currentBounds = window.getBounds()
   const workArea = screen.getDisplayMatching(currentBounds).workArea
-  const desiredWidth = mode === 'settings' ? SETTINGS_WIDTH : COMPANION_WIDTH
+  const desiredWidth =
+    mode === 'settings'
+      ? SETTINGS_WIDTH
+      : mode === 'expanded'
+        ? EXPANDED_COMPANION_WIDTH
+        : COMPACT_COMPANION_WIDTH
   const desiredHeight = mode === 'settings' ? SETTINGS_HEIGHT : COMPANION_HEIGHT
   const width = Math.min(desiredWidth, workArea.width)
   const height = Math.min(desiredHeight, workArea.height)
@@ -193,12 +199,19 @@ function setMainWindowMode(mode: MainWindowMode): void {
   if (mode === 'settings') {
     window.setMaximumSize(960, 900)
     window.setMinimumSize(Math.min(640, width), Math.min(640, height))
+  } else if (mode === 'expanded') {
+    window.setMaximumSize(860, 900)
+    window.setMinimumSize(Math.min(680, width), Math.min(640, height))
   } else {
     window.setMinimumSize(360, Math.min(640, height))
     window.setMaximumSize(480, 900)
   }
   window.setBounds({ x, y, width, height }, true)
-  if (mode === 'home') window.setAspectRatio(COMPANION_WIDTH / COMPANION_HEIGHT)
+  if (mode === 'expanded') {
+    window.setAspectRatio(EXPANDED_COMPANION_WIDTH / COMPANION_HEIGHT)
+  } else if (mode === 'compact') {
+    window.setAspectRatio(COMPACT_COMPANION_WIDTH / COMPANION_HEIGHT)
+  }
 }
 
 function positionFlyover(window: BrowserWindow, snapshot: FlyoverSnapshot): void {
@@ -359,7 +372,10 @@ function emitChatsSnapshot(): ChatsSnapshot {
 
 function registerIpc(): void {
   ipcMain.handle('app:set-window-mode', (event, mode: unknown) => {
-    if (!isTrustedSender(event.sender) || (mode !== 'home' && mode !== 'settings')) {
+    if (
+      !isTrustedSender(event.sender) ||
+      (mode !== 'expanded' && mode !== 'compact' && mode !== 'settings')
+    ) {
       throw new Error('Invalid window mode.')
     }
     setMainWindowMode(mode)
@@ -941,11 +957,11 @@ function createWindow(): void {
     return
   }
   const window = new BrowserWindow({
-    width: COMPANION_WIDTH,
+    width: EXPANDED_COMPANION_WIDTH,
     height: COMPANION_HEIGHT,
-    minWidth: 360,
+    minWidth: 680,
     minHeight: 640,
-    maxWidth: 480,
+    maxWidth: 860,
     show: false,
     center: true,
     title: 'میکی',
@@ -989,7 +1005,7 @@ function createWindow(): void {
   })
   mainWindow = window
 
-  window.setAspectRatio(COMPANION_WIDTH / COMPANION_HEIGHT)
+  window.setAspectRatio(EXPANDED_COMPANION_WIDTH / COMPANION_HEIGHT)
 
   window.on('ready-to-show', () => {
     if (!process.argv.includes('--hidden')) window.show()

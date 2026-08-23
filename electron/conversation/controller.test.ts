@@ -194,6 +194,23 @@ test('holds the followup window while the user types a draft', async (t) => {
   assert.deepEqual(harness.tts.spoken, ['جواب میکی', 'جواب میکی'])
 })
 
+test('typed followup submission releases the microphone before running the agent', async () => {
+  const received: string[] = []
+  const harness = createHarness(async (text) => {
+    received.push(text)
+    return 'completed'
+  })
+  harness.controller.onFinalTranscript('سلام')
+  await waitForFollowup(harness)
+
+  harness.controller.sendText('فردا چی کار داریم')
+  await waitForFollowup(harness, 2)
+
+  assert.deepEqual(received, ['سلام', 'فردا چی کار داریم'])
+  assert.equal(harness.speech.cancelled, 1)
+  assert.equal(harness.controller.getStatus().mode, 'followup')
+})
+
 test('ignores empty ASR silence endpoints and keeps the followup window', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const harness = createHarness()

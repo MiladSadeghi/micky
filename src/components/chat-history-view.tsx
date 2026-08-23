@@ -250,7 +250,7 @@ export function ChatDetailView({
   )
 }
 
-const ChatMessageContent = memo(function ChatMessageContent({
+export const ChatMessageContent = memo(function ChatMessageContent({
   content
 }: {
   content: string

@@ -13,6 +13,7 @@ import {
   MicOff,
   MousePointer2,
   PenLine,
+  PanelRightOpen,
   Puzzle,
   Sparkles,
   Volume2,
@@ -686,6 +687,22 @@ function UseCasesStep({
           </div>
         </section>
       </div>
+
+      <section className="flex items-start gap-3 rounded-xl border border-border/55 bg-card/30 px-3.5 py-3 text-start">
+        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground/7 text-muted-foreground">
+          <PanelRightOpen className="size-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs font-medium">متن کامل گفتگو، هر وقت لازم داشتی</h2>
+            <span className="shrink-0 text-[0.58rem] text-muted-foreground">جمع‌شدنی</span>
+          </div>
+          <p className="mt-1 text-[0.65rem] leading-5 text-muted-foreground">
+            پنل گفتگو اول بسته‌ست. از دستگیرهٔ وسط لبه بازش کن تا جواب‌های کامل، جدول‌ها و تاریخچه
+            رو بخونی یا تایپ کنی؛ بعد هم با همون دستگیره جمعش کن.
+          </p>
+        </div>
+      </section>
 
       <div className="grid grid-cols-2 gap-2">
         <UseCaseCard icon={MessageCircleQuestion} title="سؤال بپرس" example="«فردا هوا چطوره؟»" />

@@ -114,6 +114,34 @@ test('stays muted when worker initialization finishes and resets before enabling
   assert.equal(service.getStatus().phase, 'listening')
 })
 
+test('manual activation while muted starts one session without enabling active listening', () => {
+  const { service, worker } = createHarness()
+  service.initialize()
+  worker.emit('message', { type: 'ready' })
+  service.setEnabled(false)
+
+  service.activateManually()
+
+  assert.deepEqual(
+    {
+      enabled: service.getStatus().enabled,
+      phase: service.getStatus().phase,
+      captureRequested: service.getStatus().captureRequested
+    },
+    { enabled: false, phase: 'activated', captureRequested: true }
+  )
+
+  service.endExternalSession()
+  assert.deepEqual(
+    {
+      enabled: service.getStatus().enabled,
+      phase: service.getStatus().phase,
+      captureRequested: service.getStatus().captureRequested
+    },
+    { enabled: false, phase: 'disabled', captureRequested: false }
+  )
+})
+
 test('pauses microphone capture without ending the external session', () => {
   const { service, worker } = createHarness()
   service.initialize()
