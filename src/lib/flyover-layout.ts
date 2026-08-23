@@ -33,3 +33,41 @@ export function getFlyoverLayout(text: string): FlyoverLayout {
   if (length > 180 || meaningfulLines.length > 5 || structuredLines >= 3) return 'expanded'
   return 'compact'
 }
+
+export function getFlyoverComposeLayout(text: string): FlyoverLayout {
+  const trimmed = text.trim()
+  const length = Array.from(trimmed).length
+  const meaningfulLines = trimmed.split(/\r?\n/u).filter((line) => line.trim())
+  const richLayout = getFlyoverLayout(trimmed)
+
+  if (richLayout === 'wide' || richLayout === 'wide-reading') return richLayout
+  if (length > 280 || meaningfulLines.length > 8) return 'reading'
+  if (length > 72 || meaningfulLines.length > 2 || richLayout === 'expanded') return 'expanded'
+  return 'compact'
+}
+
+function mergeFlyoverLayouts(
+  contentLayout: FlyoverLayout,
+  composeLayout: FlyoverLayout
+): FlyoverLayout {
+  if (contentLayout === 'wide-reading' || composeLayout === 'wide-reading') return 'wide-reading'
+
+  const needsWide = contentLayout === 'wide' || composeLayout === 'wide'
+  const needsReading = contentLayout === 'reading' || composeLayout === 'reading'
+  if (needsWide && needsReading) return 'wide-reading'
+  if (needsWide) return 'wide'
+  if (needsReading) return 'reading'
+  if (contentLayout === 'expanded' || composeLayout === 'expanded') return 'expanded'
+  return 'compact'
+}
+
+export function getFlyoverContentLayout(input: {
+  text: string
+  detail?: string | null
+  composeText?: string | null
+}): FlyoverLayout {
+  const contentLayout = getFlyoverLayout(
+    [input.text, input.detail].filter((part): part is string => Boolean(part?.trim())).join('\n')
+  )
+  return mergeFlyoverLayouts(contentLayout, getFlyoverComposeLayout(input.composeText ?? ''))
+}

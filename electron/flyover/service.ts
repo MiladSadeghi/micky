@@ -38,7 +38,11 @@ export class FlyoverService {
 
   update(update: Partial<FlyoverSnapshot>): FlyoverSnapshot {
     const shouldFocusComposer = !this.#snapshot.canCompose && update.canCompose === true
-    this.#snapshot = { ...this.#snapshot, ...update }
+    this.#snapshot = {
+      ...this.#snapshot,
+      ...update,
+      ...(update.canCompose === false ? { composeText: null } : {})
+    }
     if (this.#snapshot.visible) this.#present(shouldFocusComposer)
     else this.#emit()
     return this.getSnapshot()
@@ -46,7 +50,12 @@ export class FlyoverService {
 
   reveal(update: Partial<FlyoverSnapshot>): FlyoverSnapshot {
     const shouldFocusComposer = !this.#snapshot.canCompose && update.canCompose === true
-    this.#snapshot = { ...this.#snapshot, ...update, visible: !this.#dismissed }
+    this.#snapshot = {
+      ...this.#snapshot,
+      ...update,
+      ...(update.canCompose === false ? { composeText: null } : {}),
+      visible: !this.#dismissed
+    }
     if (this.#snapshot.visible) this.#present(shouldFocusComposer)
     else this.#emit()
     return this.getSnapshot()
@@ -80,6 +89,7 @@ export class FlyoverService {
       visible: false,
       phase: 'hidden',
       previewImage: null,
+      composeText: null,
       interactive: false,
       canCompose: false,
       canFinish: false,

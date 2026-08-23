@@ -52,7 +52,7 @@ import {
   type UserProfileDraft
 } from '@/lib/soul'
 import { isWakeWordAudioPayload } from '@/lib/wake-word'
-import { FLYOVER_WINDOW_SIZES, getFlyoverLayout } from '@/lib/flyover-layout'
+import { FLYOVER_WINDOW_SIZES, getFlyoverContentLayout } from '@/lib/flyover-layout'
 import type { FlyoverSnapshot } from '@/lib/flyover'
 import { AgentService } from './agent/service'
 import { ChatStore } from './chats/store'
@@ -217,13 +217,16 @@ function setMainWindowMode(mode: MainWindowMode): void {
 function positionFlyover(window: BrowserWindow, snapshot: FlyoverSnapshot): void {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
   const area = process.platform === 'darwin' ? display.bounds : display.workArea
-  const content = snapshot.detail ? `${snapshot.text}\n${snapshot.detail}` : snapshot.text
-  const desired = FLYOVER_WINDOW_SIZES[getFlyoverLayout(content)]
+  const desired = FLYOVER_WINDOW_SIZES[getFlyoverContentLayout(snapshot)]
   const margin = process.platform === 'darwin' ? 6 : 10
   const width = Math.min(desired.width, area.width - margin * 2)
   const height = Math.min(desired.height, area.height - margin * 2)
   const x = Math.round(area.x + (area.width - width) / 2)
   const y = area.y + margin
+  const current = window.getBounds()
+  if (current.x === x && current.y === y && current.width === width && current.height === height) {
+    return
+  }
   window.setBounds({ x, y, width, height }, true)
 }
 
@@ -1312,7 +1315,7 @@ function handleNewChatShortcut(): void {
   void speechService?.startSession({ preroll: false, mode: 'conversation' })
 }
 
-function startFlyoverCompose(_text: string): void {
+function startFlyoverCompose(text: string): void {
   const snapshot = flyoverService?.getSnapshot()
   if (
     !snapshot ||
@@ -1336,18 +1339,20 @@ function startFlyoverCompose(_text: string): void {
     phase: 'composing',
     hint: FLYOVER_COMPOSE_HINT,
     detail: null,
+    composeText: clampFlyoverDraft(text),
     previewImage: null,
     interactive: true,
     canCompose: true
   })
 }
 
-function updateFlyoverCompose(_text: string): void {
+function updateFlyoverCompose(text: string): void {
   if (!assistantFlyoverComposing) return
   clearFlyoverIdleDismiss()
   flyoverService?.update({
     phase: 'composing',
     hint: FLYOVER_COMPOSE_HINT,
+    composeText: clampFlyoverDraft(text),
     interactive: true,
     canCompose: true
   })
@@ -1365,6 +1370,7 @@ function submitFlyoverCompose(text: string): void {
     title: 'میکی',
     text: 'دارم فکر می‌کنم…',
     hint: null,
+    composeText: null,
     interactive: assistantShortcutSilent,
     canCompose: false
   })

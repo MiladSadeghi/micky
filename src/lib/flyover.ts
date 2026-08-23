@@ -28,6 +28,7 @@ export type FlyoverSnapshot = {
   text: string
   hint: string | null
   detail: string | null
+  composeText: string | null
   previewImage: string | null
   interactive: boolean
   canCompose: boolean
@@ -45,6 +46,7 @@ export const INITIAL_FLYOVER_SNAPSHOT: FlyoverSnapshot = {
   text: '',
   hint: null,
   detail: null,
+  composeText: null,
   previewImage: null,
   interactive: false,
   canCompose: false,

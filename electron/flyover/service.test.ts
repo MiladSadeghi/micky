@@ -312,3 +312,19 @@ test('returns focus when the composer becomes available after a reply', () => {
   assert.equal(window.focusCount, 1)
   assert.equal(service.getSnapshot().canCompose, true)
 })
+
+test('clears composer sizing text when composing ends', () => {
+  const service = new FlyoverService(() => undefined)
+  service.attachWindow(fakeWindow())
+  service.show({
+    mode: 'assistant',
+    phase: 'composing',
+    composeText: 'یک پیش‌نویس بلند',
+    interactive: true,
+    canCompose: true
+  })
+
+  service.update({ phase: 'thinking', canCompose: false })
+
+  assert.equal(service.getSnapshot().composeText, null)
+})

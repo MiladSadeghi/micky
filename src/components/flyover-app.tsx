@@ -22,7 +22,7 @@ import { DEFAULT_FONT_FAMILY, DEFAULT_THEME, type AppearanceSnapshot } from '@/l
 import { useEarcons } from '@/hooks/use-earcons'
 import { useThrottledValue } from '@/hooks/use-throttled-value'
 import { useTypewriter } from '@/hooks/use-typewriter'
-import { getFlyoverLayout } from '@/lib/flyover-layout'
+import { getFlyoverComposeLayout, getFlyoverContentLayout } from '@/lib/flyover-layout'
 import { hasRichMarkdown } from '@/lib/flyover-markdown'
 import { detectTextDirection } from '@/lib/text-direction'
 import { playConfirmChime } from '@/lib/wake-chime'
@@ -263,15 +263,19 @@ export function FlyoverApp(): React.JSX.Element {
     snapshot.canApprove ||
     snapshot.canRespondToDisclosure ||
     snapshot.canOpenModels
-  const layout = getFlyoverLayout(
-    snapshot.detail ? `${snapshot.text}\n${snapshot.detail}` : snapshot.text
-  )
+  const layout = getFlyoverContentLayout({
+    text: snapshot.text,
+    detail: snapshot.detail,
+    composeText: showComposer ? draft : null
+  })
+  const composeLayout = showComposer ? getFlyoverComposeLayout(draft) : undefined
 
   return (
     <main className="flex h-full items-start justify-center p-2" dir="rtl">
       <section
         className="flyover-surface flex w-full flex-col gap-3 rounded-[1.5rem] border border-border/70 bg-card/95 px-3.5 py-3.5 shadow-2xl backdrop-blur-xl"
         data-layout={layout}
+        data-compose-layout={composeLayout}
         aria-live="polite"
       >
         <div className="flex w-full items-start gap-3.5">

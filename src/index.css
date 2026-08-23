@@ -800,7 +800,7 @@
     display: block;
     min-width: 0;
     width: 100%;
-    max-height: 4.8rem;
+    max-height: 3.2rem;
     overflow-y: auto;
     resize: none;
     border: 0;
@@ -812,7 +812,34 @@
     line-height: 1.6;
     outline: none;
     caret-color: var(--foreground);
+    scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent;
+    scrollbar-width: thin;
     -webkit-app-region: no-drag;
+  }
+
+  .flyover-compose::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .flyover-compose::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--foreground) 18%, transparent);
+  }
+
+  .flyover-surface[data-compose-layout='expanded'] .flyover-compose {
+    max-height: 10rem;
+  }
+
+  .flyover-surface[data-compose-layout='reading'] .flyover-compose {
+    max-height: 16rem;
+  }
+
+  .flyover-surface[data-compose-layout='wide'] .flyover-compose {
+    max-height: 12rem;
+  }
+
+  .flyover-surface[data-compose-layout='wide-reading'] .flyover-compose {
+    max-height: 20rem;
   }
 
   .flyover-compose-shell {
@@ -861,6 +888,19 @@
 
   .flyover-surface[data-layout='wide-reading']:has(.flyover-compose-shell) .flyover-copy {
     max-height: 28rem;
+  }
+
+  .flyover-surface[data-compose-layout='expanded']:has(.flyover-compose-shell) .flyover-copy,
+  .flyover-surface[data-compose-layout='wide']:has(.flyover-compose-shell) .flyover-copy {
+    max-height: 8rem;
+  }
+
+  .flyover-surface[data-compose-layout='reading']:has(.flyover-compose-shell) .flyover-copy {
+    max-height: 9rem;
+  }
+
+  .flyover-surface[data-compose-layout='wide-reading']:has(.flyover-compose-shell) .flyover-copy {
+    max-height: 10rem;
   }
 
   .flyover-status-dot[data-active='true'] {
